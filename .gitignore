@@ -25,6 +25,9 @@ docs/_build
 .pydevproject
 .settings
 
+# PyCharm Project files
+.idea
+
 # Packages/installer info
 *.egg
 *.egg-info
