@@ -63,48 +63,57 @@ def xy2radec(imfile, x, y, ext=0):
     return ra, dec
 
 
-def getxycenter(imfile, x, y, ext=0, radec=False,
+def getxycenter(image, x, y, ext=0, radec=False,
                 fitsconvention=False, verbose=True):
     """ Use a gaussian centroid algorithm to locate the center of a star
     near position x,y.
-    If radec==True, the x,y coords are RA and Dec.
 
-    Set fitsconvention=True to define the input and output x,y pixel positions
-    using the fits pixel indexing convention, with the center of the lower
-    left pixel at (1,1).
-    Otherwise this function uses the numpy/scipy convention which sets the
-    center of the lower left pixel at (0,0).
+    :param image: any valid input to get_header_and_data(), namely:
+      a string giving a fits filename, a pyfits hdulist or hdu, a pyfits
+      primaryhdu object, a tuple or list giving [hdr,data]
+    :param ext: (optional) extension number for science array
+    :param radec: input coordinates are in RA,Dec instead of pixels
+    :param fitsconvention: if True, then the input and output x,y pixel
+        positions use the fits pixel indexing convention, with the center of
+        the lower left pixel at (1,1). Otherwise this function uses the
+        numpy/scipy convention which sets the center of the lower left pixel
+        at (0,0).
+    :param verbose: report progress verbosely
+    :return: string giving the filter name as it appears in the fits header.
     """
     from PythonPhot import cntrd
     import pyfits
 
     if radec:
-        x, y = radec2xy(imfile, x, y, ext=ext)
-    fwhmpix = getfwhmpix(imfile, ext=ext)
-    imdat = pyfits.getdata(imfile, ext=ext)
+        x, y = radec2xy(image, x, y, ext=ext)
+    fwhmpix = getfwhmpix(image, ext=ext)
+    imdat = pyfits.getdata(image, ext=ext)
     if fitsconvention:
         x, y = x - 1, y - 1
-    xc, yc = cntrd(imdat, x, y, fwhmpix)
+    xc, yc = cntrd.cntrd(imdat, x, y, fwhmpix)
     if xc == -1:
         if verbose:
             print('Recentering within a 5-pixel box')
-        xc, yc = cntrd(imdat, x, y, fwhmpix, silent=not verbose, extendbox=5)
+        xc, yc = cntrd.cntrd(imdat, x, y, fwhmpix, silent=not verbose, extendbox=5)
     if fitsconvention:
         xc, yc = xc + 1, yc + 1
     return xc, yc
 
 
-def getpixscale(fitsfile, returntuple=False, ext=None):
+def getpixscale(image, returntuple=False, ext=None):
     """ Compute the pixel scale of the reference pixel in arcsec/pix in
     each direction from the fits header cd matrix.
-    With returntuple=True, return the two pixel scale values along the x and y
-    axes.  For returntuple=False, return the average of the two.
-    The input fitsfile may be a string giving a fits filename, a
-    pyfits hdulist or hdu.
+
+    :param image: any valid input to getheader(), namely:
+      a string giving a fits filename, a pyfits hdulist or hdu, a pyfits
+      header object, a tuple or list giving [hdr,data]
+    :param returntuple: bool. When True, return the two pixel scale values
+         along the x and y axes.  When False, return the average of the two.
+    :param ext: (optional) extension number for science array
+    :return: float value or tuple giving the pixel scale in arcseconds/pixel.
     """
     from math import sqrt
-
-    hdr = getheader(fitsfile, ext=ext)
+    hdr = getheader(image, ext=ext)
     if 'CD1_1' in hdr:
         cd11 = hdr['CD1_1']
         cd12 = hdr['CD1_2']
@@ -130,7 +139,7 @@ def getpixscale(fitsfile, returntuple=False, ext=None):
         cdelt2 = hdr['CDELT2']
     else:
         raise exceptions.RuntimeError(
-            "Cannot identify CD matrix in %s" % fitsfile)
+            "Cannot identify CD matrix in %s" % image)
     cdelt1 *= 3600.
     cdelt2 *= 3600.
     if returntuple:
@@ -140,8 +149,13 @@ def getpixscale(fitsfile, returntuple=False, ext=None):
 
 
 def getfwhmpix(image, ext=0):
-    """ Return the FWHM in pixels for this image (designed for HST images)
-    Input :  image file name or pyfits header object.
+    """ Determine the FWHM in pixels for this HST image.
+
+    :param image: any valid input to getheader(), namely:
+      a string giving a fits filename, a pyfits hdulist or hdu, a pyfits
+      header object, a tuple or list giving [hdr,data]
+    :param ext: (optional) extension number for science array
+    :return: string giving the filter name as it appears in the fits header.
     """
     hdr = getheader(image, ext=ext)
     if ext != 0:
@@ -168,15 +182,17 @@ def getfwhmpix(image, ext=0):
     return fwhmpix
 
 
-def getcamera(imfile):
-    """ Deterun the camera name (e.g. ACS-WFC or WFC3-IR)
-    from the header of the given image.  The input imfile
-    may be a string giving a fits filename, a pyfits hdu object,
-    or a pyfits header.
-    :param imfile:
-    :return:
+def getcamera(image):
+    """ Determine the camera name (e.g. ACS-WFC or WFC3-IR)
+    from the header of the given image.
+
+    :param image: any valid input to getheader(), namely:
+      a string giving a fits filename, a pyfits hdulist or hdu, a pyfits
+      header object, a tuple or list giving [hdr,data]
+
+    :return: string giving the dash-separated camera name
     """
-    hdr = getheader(imfile)
+    hdr = getheader(image)
     instrument, detector = '', ''
     if 'CAMERA' in hdr:
         instrument = hdr['CAMERA']
@@ -189,13 +205,16 @@ def getcamera(imfile):
     return camera
 
 
-def getfilter(imfile):
-    """ Determine the filter name
-    from the header of the given image.  The input imfile
-    may be a string giving a fits filename, a pyfits hdu object,
-    or a pyfits header.
+def getfilter(image):
+    """ Determine the filter name from the header of the given image.
+
+    :param image: any valid input to getheader(), namely:
+      a string giving a fits filename, a pyfits hdulist or hdu, a pyfits
+      header object, a tuple or list giving [hdr,data]
+
+    :return: string giving the filter name as it appears in the fits header.
     """
-    hdr = getheader(imfile)
+    hdr = getheader(image)
     if 'FILTER' in hdr:
         return hdr['FILTER']
     elif 'FILTER1' in hdr:
@@ -207,30 +226,77 @@ def getfilter(imfile):
 
 def getheader(fitsfile, ext=None):
     """ Return a fits image header.
-    Input : fits file name or header or hdulist or primaryhdu object.
-    Returns : pyfits.header.Header object
+
+    :param image: a string giving a fits filename, a pyfits hdulist or hdu,
+      a pyfits header object, a tuple or list giving [hdr,data]
+
+    :return: the pyfits header object
     """
     import pyfits
 
-    if isinstance(fitsfile, basestring):
-        fitsfile = pyfits.open(fitsfile)
-    if isinstance(fitsfile, pyfits.header.Header):
-        hdr = fitsfile
-    elif isinstance(fitsfile, pyfits.hdu.hdulist.HDUList):
-        if ext is not None:
-            hdr = fitsfile[ext].header
+    if isinstance(fitsfile, (tuple, list)):
+        hdr, data = fitsfile
+    else:
+        if isinstance(fitsfile, basestring):
+            fitsfile = pyfits.open(fitsfile)
+        if isinstance(fitsfile, pyfits.header.Header):
+            hdr = fitsfile
+        elif isinstance(fitsfile, pyfits.hdu.hdulist.HDUList):
+            if ext is not None:
+                hdr = fitsfile[ext].header
+            else:
+                extnamelist = [hdu.name.lower() for hdu in fitsfile]
+                if 'sci' in extnamelist:
+                    isci = extnamelist.index('sci')
+                    hdr = fitsfile[isci].header
+                else:
+                    hdr = fitsfile[0].header
+        elif isinstance(fitsfile, pyfits.hdu.image.PrimaryHDU):
+            hdr = fitsfile.header
         else:
-            extnamelist = [hdu.name.lower() for hdu in fitsfile]
+            raise exceptions.RuntimeError('input object type %s is unrecognized')
+    return hdr
+
+
+def get_header_and_data(image, ext=None):
+    """ Return a fits image header and data array.
+
+    :param image: a string giving a fits filename, a pyfits hdulist or hdu,
+      a pyfits primaryhdu object, a tuple or list giving [hdr,data]
+    :param ext: (optional) extension number for science array
+    :return:  pyfits.header.Header object and numpy data array
+    """
+    import pyfits
+    if isinstance(image, basestring):
+        image = pyfits.open(image)
+    if isinstance(image, pyfits.hdu.hdulist.HDUList):
+        if ext is not None:
+            hdr = image[ext].header
+            data = image[ext].data
+        else:
+            extnamelist = [hdu.name.lower() for hdu in image]
             if 'sci' in extnamelist:
                 isci = extnamelist.index('sci')
-                hdr = fitsfile[isci].header
+                hdr = image[isci].header
+                data = image[isci].data
             else:
-                hdr = fitsfile[0].header
-    elif isinstance(fitsfile, pyfits.hdu.image.PrimaryHDU):
-        hdr = fitsfile.header
+                hdr = image[0].header
+                data = image[0].data
+    elif isinstance(image, pyfits.hdu.image.PrimaryHDU):
+        hdr = image.header
+        data = image.data
+    elif isinstance(image, (tuple, list)):
+        if len(image)==2:
+            hdr, data = image
+        else:
+            raise exceptions.RuntimeError('Input list/tuple must have exactly'
+                                          ' 2 entries, giving [hdr,data]')
     else:
         raise exceptions.RuntimeError('input object type %s is unrecognized')
-    return hdr
+    return hdr, data
+
+
+
 
 
 # Average flux of vega through an infinite aperture for ACS filters :
@@ -262,30 +328,35 @@ ZPT_WFC3_UVIS_VEGA = {'F200LP': 26.8902, 'F300X': 23.5363, 'F350LP': 26.7874,
                       'F689M': 24.1873, 'F763M': 23.8283, 'F845M': 23.2809}
 
 
-def getzpt(imfile, system='Vega', ext=0):
+def getzpt(image, system='Vega', ext=0):
     """ Define the zero point for the given image in the photometric system
     specified ("Vega", 'AB', "STMAG").
-    Uses the PHOT?LAM keywords when available, or looks it up from hard-coded
-    dictionaries when not.
+
+    :param image: any valid input to getheader(), namely:
+      a string giving a fits filename, a pyfits hdulist or hdu, a pyfits
+      header object, a tuple or list giving [hdr,data]
+    :param system :  photometry system to use ('AB','Vega')
+
+    :return: float zeropoint magnitude
     """
     import numpy as np
     import pyfits
 
-    header = pyfits.getheader(imfile, ext=ext)
+    header = getheader(image, ext=ext)
     filt = getfilter(header)
     camera = getcamera(header)
     if camera == 'ACS-WFC':
         # For ACS the zero point varies with time, so we interpolate
         # from a fixed table for either AB or Vega.
         ZEROPOINT = getzptACS(header, system=system)
-    elif system.lower() == 'ab':
+    elif system.lower().startswith('ab'):
         # For AB mags, assuming the data are retreived from the archive
         # after 2012, we can use the header keywords to get the best zeropoint
         if ('PHOTPLAM' in header) and ('PHOTFLAM' in header):
             PHOTPLAM = header['PHOTPLAM']
             PHOTFLAM = header['PHOTFLAM']
         ZEROPOINT = -2.5 * np.log10(PHOTFLAM) - 5 * np.log10(PHOTPLAM) - 2.408
-    elif system.lower() == 'vega':
+    elif system.lower().startswith('vega'):
         # For WFC3, the Vega zeropoint is read from a fixed table
         if camera == 'WFC3-UVIS':
             ZEROPOINT = ZPT_WFC3_UVIS_VEGA[filt]
@@ -297,8 +368,14 @@ def getzpt(imfile, system='Vega', ext=0):
 def getzptACS(image, system='Vega', ext=0):
     """ Determine the ACS zeropoint for the given image by interpolating over
     a table of zeropoints. System may be 'Vega', 'ST', or 'AB'.
-    :param image:
-    :return:
+
+    :param image: any valid input to getheader(), namely:
+      a string giving a fits filename, a pyfits hdulist or hdu, a pyfits
+      header object, a tuple or list giving [hdr,data]
+    :param system :  photometry system to use ('AB','Vega','STMAG')
+
+    :return: float zeropoint magnitude
+
     """
     import os
     import numpy as np
@@ -317,11 +394,11 @@ def getzptACS(image, system='Vega', ext=0):
     zptdat = ascii.read(acszptdatfile, format='commented_header',
                         header_start=-1, data_start=0)
     ifilt = np.where(zptdat['FILTER'] == filtim)
-    if system.lower() == 'vega':
+    if system.lower().startswith('vega'):
         zpt = zptdat['VEGAMAG'][ifilt]
-    elif system.lower() == 'st':
+    elif system.lower().startswith('st'):
         zpt = zptdat['STMAG'][ifilt]
-    elif system.lower() == 'ab':
+    elif system.lower().startswith('ab'):
         zpt = zptdat['ABMAG'][ifilt]
     else:
         raise exceptions.RuntimeError(
@@ -333,16 +410,18 @@ def getzptACS(image, system='Vega', ext=0):
     return zptim
 
 
-def dophot(imfile, xc, yc, aparcsec=0.4, system='AB', ext=None,
+def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
            psfimage=None, psfradpix=3, recenter=False,
            ntestpositions=100, snthresh=0.0, zeropoint=None,
            skyannarcsec=[6.0, 12.0], skyval=None, skyalgorithm='sigmaclipping',
            target=None, printstyle=None, exact=False, fitsconvention=True,
            phpadu=None, returnflux=False, verbose=False, debug=False):
-    """ Measure the flux through aperture(s) and report observed magnitudes.
+    """ Measure the flux through aperture(s) and/or psf fitting and report
+    observed fluxes and magnitudes.
 
     Inputs:
-      imfile :  image file
+      image :  string giving image file name OR a list or 2-tuple giving
+               the header and data array as  [hdr,data]
       xc,yc  :  aperture center in pixel coordinates
       aparcsec : aperture radius in arcsec, or a string with a comma-separated
                  list of aperture radii
@@ -366,8 +445,6 @@ def dophot(imfile, xc, yc, aparcsec=0.4, system='AB', ext=None,
        given pixel position)
     """
     from PythonPhot import dophotometry
-    from PythonPhot import get_flux_and_err
-
     import pyfits
     import numpy as np
     import hstapcorr
@@ -376,24 +453,19 @@ def dophot(imfile, xc, yc, aparcsec=0.4, system='AB', ext=None,
         import pdb
         pdb.set_trace()
 
-    hdulist = pyfits.open(imfile)
-    hdr0 = hdulist[0].header
-    if ('NEXTEND' in hdr0) and (hdr0['NEXTEND'] > 1):
-        if ext is None:
-            print("WARNING: No ext specified. Using ext=1.")
-            ext = 1
-        imdat = hdulist[ext].data
-    else:
-        imdat = hdulist[0].data
-    if 'FILTER1' in hdr0:
-        if 'CLEAR' in hdr0['FILTER1']:
-            filtname = hdr0['FILTER2']
-        else:
-            filtname = hdr0['FILTER1']
-    else:
-        filtname = hdr0['FILTER']
+    imhdr, imdat = get_header_and_data(image, ext=ext)
 
-    pixscale = getpixscale(imfile, ext=ext)
+    if imdat.dtype != 'float64':
+        imdat = imdat.astype('float64', copy=False)
+    if 'FILTER1' in imhdr:
+        if 'CLEAR' in imhdr['FILTER1']:
+            filtname = imhdr['FILTER2']
+        else:
+            filtname = imhdr['FILTER1']
+    else:
+        filtname = imhdr['FILTER']
+
+    pixscale = getpixscale(imhdr, ext=ext)
     if not np.iterable(aparcsec):
         aparcsec = np.array([aparcsec])
     elif not isinstance(aparcsec, np.ndarray):
@@ -403,19 +475,19 @@ def dophot(imfile, xc, yc, aparcsec=0.4, system='AB', ext=None,
     skyannpix = np.array([skyrad / pixscale for skyrad in skyannarcsec])
     assert skyannpix[0] >= np.max(
         appix), "Sky annulus must be >= largest aperture."
-    camera = getcamera(hdr0)
+    camera = getcamera(imhdr)
 
     # Define the conversion factor from the values in this image
     # to photons : photons per ADU.
     if phpadu is None:
-        if 'BUNIT' not in hdr0:
-            if camera == 'WFC3-IR' and 'EXPTIME' in hdr0:
-                phpadu = hdr0['EXPTIME']
+        if 'BUNIT' not in imhdr:
+            if camera == 'WFC3-IR' and 'EXPTIME' in imhdr:
+                phpadu = imhdr['EXPTIME']
             else:
                 phpadu = 1
-        elif hdr0['BUNIT'].lower() in ['cps', 'electrons/s']:
-            phpadu = hdr0['EXPTIME']
-        elif hdr0['BUNIT'].lower() in ['counts', 'electrons']:
+        elif imhdr['BUNIT'].lower() in ['cps', 'electrons/s']:
+            phpadu = imhdr['EXPTIME']
+        elif imhdr['BUNIT'].lower() in ['counts', 'electrons']:
             phpadu = 1
         assert (
             phpadu is not None), "Can't determine units from the image header."
@@ -425,7 +497,7 @@ def dophot(imfile, xc, yc, aparcsec=0.4, system='AB', ext=None,
         apcor = np.zeros(len(aparcsec))
         aperr = np.zeros(len(aparcsec))
     else:
-        zpt = getzpt(imfile, system=system)
+        zpt = getzpt(image, system=system)
         if camera == 'WFC3-IR':
             apcor, aperr = hstapcorr.apcorrWFC3IR(filtname, aparcsec)
         elif camera == 'WFC3-UVIS':
@@ -438,12 +510,13 @@ def dophot(imfile, xc, yc, aparcsec=0.4, system='AB', ext=None,
     else:
         xpy, ypy = xc, yc
 
-    apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr = get_flux_and_err(
+    photoutput = dophotometry.get_flux_and_err(
         imdat, psfimage, [xpy, ypy],
         psfradpix=psfradpix, apradpix=appix, ntestpositions=ntestpositions,
         skyannpix=skyannpix, skyalgorithm=skyalgorithm, setskyval=skyval,
         recenter_target=recenter, recenter_fakes=True, exact=exact,
         ronoise=1, phpadu=phpadu, verbose=verbose, debug=debug)
+    apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr = photoutput
     if not np.iterable(apflux):
         apflux = np.array([apflux])
         apfluxerr = np.array([apfluxerr])
@@ -493,13 +566,12 @@ def dophot(imfile, xc, yc, aparcsec=0.4, system='AB', ext=None,
     if returnflux:
         return apflux
 
-    hdr = pyfits.getheader(imfile, ext=ext)
-    if 'EXPEND' in hdr:
-        mjdobs = hdr['EXPEND']
+    if 'EXPEND' in imhdr:
+        mjdobs = imhdr['EXPEND']
     else:
         mjdobs = 0.0
     if not target:
-        target = imfile.split('_')[0]
+        target = image.split('_')[0]
 
     if verbose and printstyle == 'snana':
         # Convert to SNANA fluxcal units and Construct a SNANA-style OBS
@@ -529,7 +601,7 @@ def dophot(imfile, xc, yc, aparcsec=0.4, system='AB', ext=None,
         elif printstyle.lower() in ['long', 'verbose']:
             try:
                 # convert xc, yc to RA,Dec :
-                xout, yout = xy2radec(imfile, xc, yc, ext=ext)
+                xout, yout = xy2radec(image, xc, yc, ext=ext)
             except:
                 xout, yout = xc, yc
                 print("WARNING: cannot convert x,y to ra,dec")
@@ -539,7 +611,7 @@ def dophot(imfile, xc, yc, aparcsec=0.4, system='AB', ext=None,
                           aparcsec[iap],
                           apflux[iap], apfluxerr[iap], mag[iap], magerr[iap],
                           system,
-                          zpt, sky, skyerr, imfile)
+                          zpt, sky, skyerr, image)
 
         else:
             magline = '%.2f  %6s  %4.2f  %9.4f %8.4f   %9.4f %8.4f  %5s   ' \
