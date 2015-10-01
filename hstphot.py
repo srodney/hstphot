@@ -41,24 +41,33 @@ def radec2xy(imfile, ra, dec, ext=0):
     return x, y
 
 
-def xy2radec(imfile, x, y, ext=0):
+def xy2radec(imfile_or_hdr, x, y, ext=0):
     """ Convert the given x,y pixel position into
     ra,dec sky coordinates (in decimal degrees) for the given image.
 
     NOTE : this program assumes the input position follows the fits convention,
     with the center of the lower left pixel at (1,1).  The numpy/scipy
     convention sets the center of the lower left pixel at (0,0).
+
+    :param imfile_or_hdr: image filename or pyfits Header object
     """
     import pyfits
     from pywcs import WCS
 
-    fobj = pyfits.open(imfile)
-    header = pyfits.getheader(imfile, ext=ext)
-    try:
-        wcs = WCS(fobj=fobj, header=header)
-    except KeyError:
-        wcs = WCS(header=header)
-    fobj.close()
+    if isinstance(imfile_or_hdr, basestring):
+        # fobj = pyfits.open(imfile_or_hdr)
+        header = pyfits.getheader(imfile_or_hdr, ext=ext)
+    elif isinstance(imfile_or_hdr, pyfits.Header):
+        header = imfile_or_hdr
+    else:
+        print("WARNING: could not convert x,y to ra,dec for %s" %
+               str(imfile_or_hdr))
+    # try:
+    # alternate WCS construction may be necessary for ACS files ?
+    # wcs = WCS(fobj=fobj, header=header)
+    # except KeyError:
+    wcs = WCS(header=header)
+    # fobj.close()
     ra, dec = wcs.wcs_pix2sky(x, y, 1)
     return ra, dec
 
@@ -94,7 +103,8 @@ def getxycenter(image, x, y, ext=0, radec=False,
     if xc == -1:
         if verbose:
             print('Recentering within a 5-pixel box')
-        xc, yc = cntrd.cntrd(imdat, x, y, fwhmpix, silent=not verbose, extendbox=5)
+        xc, yc = cntrd.cntrd(imdat, x, y, fwhmpix,
+                             verbose=verbose, extendbox=5)
     if fitsconvention:
         xc, yc = xc + 1, yc + 1
     return xc, yc
@@ -268,7 +278,8 @@ def get_header_and_data(image, ext=None):
     """
     import pyfits
     if isinstance(image, basestring):
-        image = pyfits.open(image)
+        imfilename = image
+        image = pyfits.open(imfilename)
     if isinstance(image, pyfits.hdu.hdulist.HDUList):
         if ext is not None:
             hdr = image[ext].header
@@ -411,7 +422,7 @@ def getzptACS(image, system='Vega', ext=0):
 
 
 def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
-           psfimage=None, psfradpix=3, recenter=False,
+           psfimage=None, psfradpix=3, recenter=False, imfilename=None,
            ntestpositions=100, snthresh=0.0, zeropoint=None,
            skyannarcsec=[6.0, 12.0], skyval=None, skyalgorithm='sigmaclipping',
            target=None, printstyle=None, exact=False, fitsconvention=True,
@@ -444,8 +455,7 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
     Note :  No recentering is done (i.e. this does forced photometry at the
        given pixel position)
     """
-    from PythonPhot import dophotometry
-    import pyfits
+    from PythonPhot import photfunctions
     import numpy as np
     import hstapcorr
 
@@ -454,6 +464,13 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
         pdb.set_trace()
 
     imhdr, imdat = get_header_and_data(image, ext=ext)
+    if imfilename is None:
+        if isinstance(image, basestring):
+            imfilename = image
+        elif 'FILENAME' in imhdr:
+            imfilename = imhdr['FILENAME']
+        else:
+            imfilename = 'unknown'
 
     if imdat.dtype != 'float64':
         imdat = imdat.astype('float64', copy=False)
@@ -510,7 +527,7 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
     else:
         xpy, ypy = xc, yc
 
-    photoutput = dophotometry.get_flux_and_err(
+    photoutput = photfunctions.get_flux_and_err(
         imdat, psfimage, [xpy, ypy],
         psfradpix=psfradpix, apradpix=appix, ntestpositions=ntestpositions,
         skyannpix=skyannpix, skyalgorithm=skyalgorithm, setskyval=skyval,
@@ -570,8 +587,6 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
         mjdobs = imhdr['EXPEND']
     else:
         mjdobs = 0.0
-    if not target:
-        target = image.split('_')[0]
 
     if verbose and printstyle == 'snana':
         # Convert to SNANA fluxcal units and Construct a SNANA-style OBS
@@ -590,6 +605,17 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
             print '# MJD     FILTER  APER      FLUX   FLUXERR       MAG     '\
                   'MAGERR  MAGSYS    ZP       SKY   SKYERR'
 
+    if printstyle is not None :
+        printstyle = printstyle.lower()
+    ra, dec = 0, 0
+    if (printstyle is not None and
+                printstyle.lower() in ['snana', 'long', 'verbose']):
+        if not target and 'FILENAME' in imhdr.keys():
+            target = imhdr['FILENAME'].split('_')[0]
+        elif not target:
+            target = 'target'
+        ra, dec = xy2radec(imhdr, xc, yc, ext=ext)
+
     maglinelist = []
     for iap in range(len(aparcsec)):
         if printstyle == 'snana':
@@ -598,21 +624,14 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
                           float(mjdobs), FilterAlpha[filtname], target,
                           fluxcal[iap], fluxcalerr[iap], mag[iap], magerr[iap],
                           zpt)
-        elif printstyle.lower() in ['long', 'verbose']:
-            try:
-                # convert xc, yc to RA,Dec :
-                xout, yout = xy2radec(image, xc, yc, ext=ext)
-            except:
-                xout, yout = xc, yc
-                print("WARNING: cannot convert x,y to ra,dec")
+        elif printstyle in ['long', 'verbose']:
             magline = '%-15s  %10.5f  %10.5f  %.2f  %6s  %4.2f  %9.4f %8.4f  '\
                       ' %9.4f %8.4f  %5s   %7.4f  %7.4f %6.4f  %s' % (
-                          target, xout, yout, float(mjdobs), filtname,
+                          target, ra, dec, float(mjdobs), filtname,
                           aparcsec[iap],
                           apflux[iap], apfluxerr[iap], mag[iap], magerr[iap],
                           system,
-                          zpt, sky, skyerr, image)
-
+                          zpt, sky, skyerr, imfilename)
         else:
             magline = '%.2f  %6s  %4.2f  %9.4f %8.4f   %9.4f %8.4f  %5s   ' \
                       '%7.4f  %7.4f %6.4f' % (
