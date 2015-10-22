@@ -423,7 +423,7 @@ def getzptACS(image, system='Vega', ext=0):
 
 def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
            psfimage=None, psfradpix=3, recenter=False, imfilename=None,
-           ntestpositions=100, snthresh=0.0, zeropoint=None,
+           ntestpositions=100, snthresh=0.0, zeropoint=None, filtername=None,
            skyannarcsec=[6.0, 12.0], skyval=None, skyalgorithm='sigmaclipping',
            target=None, printstyle=None, exact=False, fitsconvention=True,
            phpadu=None, returnflux=False, verbose=False, debug=False):
@@ -474,13 +474,14 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
 
     if imdat.dtype != 'float64':
         imdat = imdat.astype('float64', copy=False)
-    if 'FILTER1' in imhdr:
-        if 'CLEAR' in imhdr['FILTER1']:
-            filtname = imhdr['FILTER2']
+    if not filtername:
+        if 'FILTER1' in imhdr:
+            if 'CLEAR' in imhdr['FILTER1']:
+                filtername = imhdr['FILTER2']
+            else:
+                filtername = imhdr['FILTER1']
         else:
-            filtname = imhdr['FILTER1']
-    else:
-        filtname = imhdr['FILTER']
+            filtername = imhdr['FILTER']
 
     pixscale = getpixscale(imhdr, ext=ext)
     if not np.iterable(aparcsec):
@@ -516,11 +517,11 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
     else:
         zpt = getzpt(image, system=system)
         if camera == 'WFC3-IR':
-            apcor, aperr = hstapcorr.apcorrWFC3IR(filtname, aparcsec)
+            apcor, aperr = hstapcorr.apcorrWFC3IR(filtername, aparcsec)
         elif camera == 'WFC3-UVIS':
-            apcor, aperr = hstapcorr.apcorrWFC3UVIS(filtname, aparcsec)
+            apcor, aperr = hstapcorr.apcorrWFC3UVIS(filtername, aparcsec)
         elif camera == 'ACS-WFC':
-            apcor, aperr = hstapcorr.apcorrACSWFC(filtname, aparcsec)
+            apcor, aperr = hstapcorr.apcorrACSWFC(filtername, aparcsec)
 
     if fitsconvention:
         xpy, ypy = xc - 1, yc - 1
@@ -621,13 +622,13 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
         if printstyle == 'snana':
             magline = 'OBS: %8.2f   %6s   %s %8.3f %8.3f    '\
                       '%8.3f %8.3f   %.3f' % (
-                          float(mjdobs), FilterAlpha[filtname], target,
+                          float(mjdobs), FilterAlpha[filtername], target,
                           fluxcal[iap], fluxcalerr[iap], mag[iap], magerr[iap],
                           zpt)
         elif printstyle in ['long', 'verbose']:
             magline = '%-15s  %10.5f  %10.5f  %.2f  %6s  %4.2f  %9.4f %8.4f  '\
                       ' %9.4f %8.4f  %5s   %7.4f  %7.4f %6.4f  %s' % (
-                          target, ra, dec, float(mjdobs), filtname,
+                          target, ra, dec, float(mjdobs), filtername,
                           aparcsec[iap],
                           apflux[iap], apfluxerr[iap], mag[iap], magerr[iap],
                           system,
@@ -635,7 +636,7 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
         else:
             magline = '%.2f  %6s  %4.2f  %9.4f %8.4f   %9.4f %8.4f  %5s   ' \
                       '%7.4f  %7.4f %6.4f' % (
-                          float(mjdobs), filtname, aparcsec[iap],
+                          float(mjdobs), filtername, aparcsec[iap],
                           apflux[iap], apfluxerr[iap], mag[iap], magerr[iap],
                           system,
                           zpt, sky, skyerr)
@@ -676,6 +677,9 @@ def main():
                              'Necessary for small apertures.)')
     parser.add_argument('--apertures', type=str, default='0.4',
                         help='Size of photometry aperture(s) in arcsec. ')
+    parser.add_argument('--filtername', type=str, default=None,
+                        help='HST filter name (if not provided, we will read '
+                             'it from the header)')
     parser.add_argument('--skyannulus', metavar='6.0,12.0', type=str,
                         default='6.0,12.0',
                         help='Inner and outer radius of sky annulus in '
@@ -754,6 +758,7 @@ def main():
                          psfimage=argv.psfmodel, ext=argv.ext,
                          skyannarcsec=skyannarcsec, skyval=argv.skyval,
                          system=magsys, zeropoint=argv.zeropoint,
+                         filtername=argv.filtername,
                          skyalgorithm=argv.skyalgorithm,
                          snthresh=argv.snthresh,
                          exact=argv.exact,
