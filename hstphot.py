@@ -423,7 +423,8 @@ def getzptACS(image, system='Vega', ext=0):
 
 def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
            psfimage=None, psfradpix=3, recenter=False, imfilename=None,
-           ntestpositions=100, snthresh=0.0, zeropoint=None, filtername=None,
+           ntestpositions=100, snthresh=0.0, zeropoint=None,
+           filtername=None, exptime=None,
            skyannarcsec=[6.0, 12.0], skyval=None, skyalgorithm='sigmaclipping',
            target=None, printstyle=None, exact=False, fitsconvention=True,
            phpadu=None, returnflux=False, verbose=False, debug=False):
@@ -483,6 +484,13 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
         else:
             filtername = imhdr['FILTER']
 
+    if not exptime:
+        if 'EXPTIME' in imhdr:
+            exptime = imhdr['EXPTIME']
+        else:
+            raise exceptions.RuntimeError(
+                "Cannot determine exposure time for %s" % imfilename)
+
     pixscale = getpixscale(imhdr, ext=ext)
     if not np.iterable(aparcsec):
         aparcsec = np.array([aparcsec])
@@ -533,7 +541,8 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
         psfradpix=psfradpix, apradpix=appix, ntestpositions=ntestpositions,
         skyannpix=skyannpix, skyalgorithm=skyalgorithm, setskyval=skyval,
         recenter_target=recenter, recenter_fakes=True, exact=exact,
-        ronoise=1, phpadu=phpadu, verbose=verbose, debug=debug)
+        exptime=exptime, ronoise=1, phpadu=phpadu, verbose=verbose,
+        debug=debug)
     apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr = photoutput
     if not np.iterable(apflux):
         apflux = np.array([apflux])
