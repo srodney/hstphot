@@ -48,3 +48,5 @@ distribute-*.tar.gz
 
 # Mac OSX
 .DS_Store
+
+p330e_mags.dat
