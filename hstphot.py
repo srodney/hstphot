@@ -73,7 +73,7 @@ def xy2radec(imfile_or_hdr, x, y, ext=0):
 
 
 def getxycenter(image, x, y, ext=0, radec=False,
-                fitsconvention=False, verbose=True):
+                fitsconvention=False, verbose=False):
     """ Use a gaussian centroid algorithm to locate the center of a star
     near position x,y.
 
@@ -99,7 +99,7 @@ def getxycenter(image, x, y, ext=0, radec=False,
     imdat = pyfits.getdata(image, ext=ext)
     if fitsconvention:
         x, y = x - 1, y - 1
-    xc, yc = cntrd.cntrd(imdat, x, y, fwhmpix)
+    xc, yc = cntrd.cntrd(imdat, x, y, fwhmpix, verbose=verbose)
     if xc == -1:
         if verbose:
             print('Recentering within a 5-pixel box')
@@ -548,20 +548,31 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
         apflux = np.array([apflux])
         apfluxerr = np.array([apfluxerr])
 
+    if psfimage is not None:
+        # record the psf flux as a final infinite aperture for printing
+        # purposes:
+        aparcsec = np.append(aparcsec, np.inf)
+        apflux = np.append(apflux, [psfflux])
+        apfluxerr = np.append(apfluxerr, [psffluxerr])
+        apcor = np.append(apcor, 0)
+
     # apply aperture corrections to flux and mags
     # and define upper limit mags for fluxes with significance <snthresh
     if verbose > 2:
         print " SRCFLUX   PREAPCOR  FERR   FERRSYS"
     mag, magerr = np.zeros(len(apflux)), np.zeros(len(apflux))
     for i in range(len(apflux)):
-        # Apply aperture corrections to the measured fluxes
-        #    flux rescaled to larger aperture:
-        apflux[i] *= 10 ** (0.4 * apcor[i])
-        #    flux error rescaled:
-        df = apfluxerr[i] * 10 ** (0.4 * apcor[i])
-        #    systematic err from aperture correction :
-        dfap = 0.4 * np.log(10) * apflux[i] * aperr[i]
-        apfluxerr[i] = np.sqrt(df ** 2 + dfap ** 2)  # total flux err
+        if np.isfinite(aparcsec[i]):
+            # For actual aperture measurements (not the psf fitting flux),
+            # apply aperture corrections to the measured fluxes
+            # Flux rescaled to larger aperture:
+            apflux[i] *= 10 ** (0.4 * apcor[i])
+            # Flux error rescaled:
+            df = apfluxerr[i] * 10 ** (0.4 * apcor[i])
+            #  Systematic err from aperture correction :
+            dfap = 0.4 * np.log(10) * apflux[i] * aperr[i]
+            apfluxerr[i] = np.sqrt(df ** 2 + dfap ** 2)  # total flux err
+
         if apflux[i] < abs(apfluxerr[i]) * snthresh:
             # no real detection. Report mag as an upper limit
             sigmafactor = snthresh or 3
@@ -573,18 +584,6 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
             # applied)
             mag[i] = -2.5 * np.log10(apflux[i]) + zpt
             magerr[i] = 1.0857 * apfluxerr[i] / apflux[i]
-        if verbose > 2:
-            print(" %.4f  %.4f  %.4f  %.4f" % (
-                apflux[i], apflux[i] / 10 ** (0.4 * apcor[i]), df, dfap))
-
-    if psfimage is not None:
-        # record the psf flux as a final infinite aperture for printing
-        # purposes:
-        aparcsec = np.append(aparcsec, np.inf)
-        apflux = np.append(apflux, [psfflux])
-        apfluxerr = np.append(apfluxerr, [psffluxerr])
-        mag = np.append(mag, -2.5 * np.log10(psfflux) + zpt)
-        magerr = np.append(magerr, 1.0857 * psffluxerr / psfflux)
 
     if debug:
         import pdb
@@ -593,8 +592,8 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
     if returnflux:
         return apflux
 
-    if 'EXPEND' in imhdr:
-        mjdobs = imhdr['EXPEND']
+    if 'EXPSTART' in imhdr and 'EXPEND' in imhdr:
+        mjdobs = (imhdr['EXPEND'] + imhdr['EXPSTART'])/2.
     else:
         mjdobs = 0.0
 
@@ -635,7 +634,7 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
                           fluxcal[iap], fluxcalerr[iap], mag[iap], magerr[iap],
                           zpt)
         elif printstyle in ['long', 'verbose']:
-            magline = '%-15s  %10.5f  %10.5f  %.2f  %6s  %4.2f  %9.4f %8.4f  '\
+            magline = '%-15s  %10.5f  %10.5f  %.3f  %6s  %4.2f  %9.4f %8.4f  '\
                       ' %9.4f %8.4f  %5s   %7.4f  %7.4f %6.4f  %s' % (
                           target, ra, dec, float(mjdobs), filtername,
                           aparcsec[iap],
@@ -643,7 +642,7 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
                           system,
                           zpt, sky, skyerr, imfilename)
         else:
-            magline = '%.2f  %6s  %4.2f  %9.4f %8.4f   %9.4f %8.4f  %5s   ' \
+            magline = '%.3f  %6s  %4.2f  %9.4f %8.4f   %9.4f %8.4f  %5s   ' \
                       '%7.4f  %7.4f %6.4f' % (
                           float(mjdobs), filtername, aparcsec[iap],
                           apflux[iap], apfluxerr[iap], mag[iap], magerr[iap],
@@ -670,6 +669,8 @@ def main():
     parser.add_argument('y', type=float, help='Y position or Dec')
     parser.add_argument('--psfmodel', type=str, default=None,
                         help="Filename of a psf model fits file.")
+    parser.add_argument('--ntest', type=int, default=None,
+                        help='Number of test positions for fake sources.')
     parser.add_argument('--ext', type=int, default=None,
                         help='Specify the fits extension number. Required '
                              'for FLT files.')
@@ -771,6 +772,7 @@ def main():
                          skyalgorithm=argv.skyalgorithm,
                          snthresh=argv.snthresh,
                          exact=argv.exact,
+                         ntestpositions=argv.ntest,
                          recenter=False,  # recentering already done above
                          printstyle=argv.printstyle, target=argv.target,
                          phpadu=argv.phpadu, verbose=argv.verbose,
