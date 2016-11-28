@@ -1,7 +1,7 @@
 __author__ = 'rodney'
 
 from hstphot import radec2xy
-import pyfits
+from astropy.io import fits as pyfits
 import numpy as np
 from PythonPhot.photfunctions import rdpsfmodel
 from PythonPhot.fakestar import addtoimarray

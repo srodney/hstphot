@@ -27,17 +27,17 @@ def radec2xy(imfile, ra, dec, ext=0):
       of the lower left pixel at (1,1).  The numpy/scipy convention sets
       the center of the lower left pixel at (0,0).
     """
-    import pyfits
-    from pywcs import WCS
+    from astropy.io import fits
+    from astropy.wcs import WCS
 
-    fobj = pyfits.open(imfile)
-    header = pyfits.getheader(imfile, ext=ext)
+    fobj = fits.open(imfile)
+    header = fits.getheader(imfile, ext=ext)
     try:
         wcs = WCS(fobj=fobj, header=header)
     except KeyError:
         wcs = WCS(header=header)
     fobj.close()
-    x, y = wcs.wcs_sky2pix(ra, dec, 1)
+    x, y = wcs.wcs_world2pix(ra, dec, 1)
     return x, y
 
 
@@ -49,15 +49,14 @@ def xy2radec(imfile_or_hdr, x, y, ext=0):
     with the center of the lower left pixel at (1,1).  The numpy/scipy
     convention sets the center of the lower left pixel at (0,0).
 
-    :param imfile_or_hdr: image filename or pyfits Header object
+    :param imfile_or_hdr: image filename or astropy.io.fits Header object
     """
-    import pyfits
-    from pywcs import WCS
+    from astropy.io import fits
+    from astropy.wcs import WCS
 
     if isinstance(imfile_or_hdr, basestring):
-        # fobj = pyfits.open(imfile_or_hdr)
-        header = pyfits.getheader(imfile_or_hdr, ext=ext)
-    elif isinstance(imfile_or_hdr, pyfits.Header):
+        header = fits.getheader(imfile_or_hdr, ext=ext)
+    elif isinstance(imfile_or_hdr, fits.Header):
         header = imfile_or_hdr
     else:
         print("WARNING: could not convert x,y to ra,dec for %s" %
@@ -68,7 +67,7 @@ def xy2radec(imfile_or_hdr, x, y, ext=0):
     # except KeyError:
     wcs = WCS(header=header)
     # fobj.close()
-    ra, dec = wcs.wcs_pix2sky(x, y, 1)
+    ra, dec = wcs.all_pix2world(x, y, 1)
     return ra, dec
 
 
@@ -91,7 +90,7 @@ def getxycenter(image, x, y, ext=0, radec=False,
     :return: string giving the filter name as it appears in the fits header.
     """
     from PythonPhot import cntrd
-    import pyfits
+    from astropy.io import fits as pyfits
 
     if radec:
         x, y = radec2xy(image, x, y, ext=ext)
@@ -242,7 +241,7 @@ def getheader(fitsfile, ext=None):
 
     :return: the pyfits header object
     """
-    import pyfits
+    from astropy.io import fits as pyfits
 
     if isinstance(fitsfile, (tuple, list)):
         hdr, data = fitsfile
@@ -276,7 +275,7 @@ def get_header_and_data(image, ext=None):
     :param ext: (optional) extension number for science array
     :return:  pyfits.header.Header object and numpy data array
     """
-    import pyfits
+    from astropy.io import fits as pyfits
     if isinstance(image, basestring):
         imfilename = image
         image = pyfits.open(imfilename)
@@ -351,7 +350,6 @@ def getzpt(image, system='Vega', ext=0):
     :return: float zeropoint magnitude
     """
     import numpy as np
-    import pyfits
 
     header = getheader(image, ext=ext)
     filt = getfilter(header)
@@ -558,8 +556,6 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
 
     # apply aperture corrections to flux and mags
     # and define upper limit mags for fluxes with significance <snthresh
-    if verbose > 2:
-        print " SRCFLUX   PREAPCOR  FERR   FERRSYS"
     mag, magerr = np.zeros(len(apflux)), np.zeros(len(apflux))
     for i in range(len(apflux)):
         if np.isfinite(aparcsec[i]):
@@ -572,6 +568,9 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
             #  Systematic err from aperture correction :
             dfap = 0.4 * np.log(10) * apflux[i] * aperr[i]
             apfluxerr[i] = np.sqrt(df ** 2 + dfap ** 2)  # total flux err
+            if verbose > 1:
+                print " FERRTOT  FERRSTAT   FERRSYS"
+                print " %.5f  %.5f  %.5f" % (apfluxerr[i], df, dfap)
 
         if apflux[i] < abs(apfluxerr[i]) * snthresh:
             # no real detection. Report mag as an upper limit
@@ -657,7 +656,7 @@ def main():
     import os
     import argparse
     from numpy import array
-    import pyfits
+    from astropy.io import fits as pyfits
 
     parser = argparse.ArgumentParser(
         description='Measure aperture photometry on drizzled HST images.'
