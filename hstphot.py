@@ -182,9 +182,9 @@ def getfwhmpix(image, ext=0):
     elif ('TELESCOP' in hdr) and (hdr['TELESCOP'] == 'HST'):
         fwhmarcsec = 0.1
     else:
-        print "WARNING : no instrument, detector or telescope identified."
-        "  so we are arbitrarily setting the FWHM to 2.5 pixels for "
-        "centroiding"
+        print("WARNING : no instrument, detector or telescope identified."
+              "  so we are arbitrarily setting the FWHM to 2.5 pixels for "
+              "centroiding")
         return 2.5
     pixscale = getpixscale(hdr)
     fwhmpix = fwhmarcsec / pixscale
@@ -569,8 +569,8 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
             dfap = 0.4 * np.log(10) * apflux[i] * aperr[i]
             apfluxerr[i] = np.sqrt(df ** 2 + dfap ** 2)  # total flux err
             if verbose > 1:
-                print " FERRTOT  FERRSTAT   FERRSYS"
-                print " %.5f  %.5f  %.5f" % (apfluxerr[i], df, dfap)
+                print(" FERRTOT  FERRSTAT   FERRSYS")
+                print(" %.5f  %.5f  %.5f" % (apfluxerr[i], df, dfap))
 
         if apflux[i] < abs(apfluxerr[i]) * snthresh:
             # no real detection. Report mag as an upper limit
@@ -602,16 +602,16 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
         # OBS: 56456.500  H  wol    0.000    8.630   25.160   -9.000
         fluxcal = apflux * 10 ** (0.4 * (27.5 - zpt))
         fluxcalerr = apfluxerr * 10 ** (0.4 * (27.5 - zpt))
-        print 'VARLIST:  MJD  FLT FIELD   FLUXCAL   FLUXCALERR    MAG     '\
-              'MAGERR   ZPT'
+        print('VARLIST:  MJD  FLT FIELD   FLUXCAL   FLUXCALERR    MAG     '
+              'MAGERR   ZPT')
     elif verbose:
         if printstyle.lower() in ['long', 'verbose']:
-            print '#  TARGET                RA         DEC       MJD  FILTER '\
-                  ' APER       FLUX  FLUXERR         MAG   MAGERR  MAGSYS    '\
-                  '   ZP      SKY SKYERR  IMAGE'
+            print('#  TARGET                RA         DEC       MJD  FILTER '
+                  ' APER       FLUX  FLUXERR         MAG   MAGERR  MAGSYS    '
+                  '   ZP      SKY SKYERR  IMAGE')
         else:
-            print '# MJD     FILTER  APER      FLUX   FLUXERR       MAG     '\
-                  'MAGERR  MAGSYS    ZP       SKY   SKYERR'
+            print('# MJD     FILTER  APER      FLUX   FLUXERR       MAG     '
+                  'MAGERR  MAGSYS    ZP       SKY   SKYERR')
 
     if printstyle is not None :
         printstyle = printstyle.lower()
