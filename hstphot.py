@@ -2,8 +2,10 @@
 # 2014.06.29  S.Rodney
 __author__ = 'rodney'
 
-import exceptions
 import sys
+if sys.version_info <= (3,0):
+    import exceptions
+
 
 # Conversion table from full filter names to single-letter abbreviations
 # used in STARDUST and other S.Rodney code
@@ -54,7 +56,7 @@ def xy2radec(imfile_or_hdr, x, y, ext=0):
     from astropy.io import fits
     from astropy.wcs import WCS
 
-    if isinstance(imfile_or_hdr, basestring):
+    if isinstance(imfile_or_hdr, str):
         header = fits.getheader(imfile_or_hdr, ext=ext)
     elif isinstance(imfile_or_hdr, fits.Header):
         header = imfile_or_hdr
@@ -246,7 +248,7 @@ def getheader(fitsfile, ext=None):
     if isinstance(fitsfile, (tuple, list)):
         hdr, data = fitsfile
     else:
-        if isinstance(fitsfile, basestring):
+        if isinstance(fitsfile, str):
             fitsfile = pyfits.open(fitsfile)
         if isinstance(fitsfile, pyfits.header.Header):
             hdr = fitsfile
@@ -276,7 +278,7 @@ def get_header_and_data(image, ext=None):
     :return:  pyfits.header.Header object and numpy data array
     """
     from astropy.io import fits as pyfits
-    if isinstance(image, basestring):
+    if isinstance(image, str):
         imfilename = image
         image = pyfits.open(imfilename)
     if isinstance(image, pyfits.hdu.hdulist.HDUList):
@@ -464,7 +466,7 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
 
     imhdr, imdat = get_header_and_data(image, ext=ext)
     if imfilename is None:
-        if isinstance(image, basestring):
+        if isinstance(image, str):
             imfilename = image
         elif 'FILENAME' in imhdr:
             imfilename = imhdr['FILENAME']
@@ -777,7 +779,7 @@ def main():
                          phpadu=argv.phpadu, verbose=argv.verbose,
                          debug=argv.debug)
     for iap in range(len(maglinelist)):
-        print maglinelist[iap].strip()
+        print(maglinelist[iap].strip())
 
 
 if __name__ == '__main__':

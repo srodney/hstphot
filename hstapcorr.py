@@ -90,11 +90,11 @@ def apcorrWFC3UVIS( filt, aprad_arcsec ) :
 
     from scipy import interpolate as scint
     import numpy as np
-    from string import letters, punctuation
+    from string import ascii_letters, punctuation
 
     # central filter wavelength, in um, for WFC3-UVIS filter names
     if filt.lower() == 'f350lp' : filt='600' # fudge for long-pass F350LP
-    filtwave = int(filt.strip( letters + punctuation ))  / 1000.
+    filtwave = int(filt.strip( ascii_letters + punctuation ))  / 1000.
 
     # wavelengths and aperture sizes (in arcsec) for the x and y
     # dimensions of the WFC3-UVIS encircled energy table, respectively
@@ -135,10 +135,10 @@ def apcorrWFC3IR( filt, aprad_arcsec ) :
     """
     from scipy import interpolate as scint
     import numpy as np
-    from string import letters, punctuation
+    from string import ascii_letters, punctuation
 
     # central filter wavelength, um, for WFC3-IR filter names
-    filtwave = int(filt.strip( letters+punctuation ))  / 100.
+    filtwave = int(filt.strip( ascii_letters+punctuation ))  / 100.
 
     # wavelengths and aperture sizes (in arcsec) for the x and y
     # dimensions of the WFC3-IR encircled energy table, respectively
