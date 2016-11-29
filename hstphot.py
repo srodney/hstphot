@@ -717,7 +717,7 @@ def main():
     parser.add_argument('--phpadu', type=float, default=None,
                         help='Photons per ADU (for converting data numbers '
                              'to photon counts).')
-    parser.add_argument('-v', dest='verbose', action='count',
+    parser.add_argument('-v', dest='verbose', action='count', default=0,
                         help='Turn verbosity up (use -v,-vv,-vvv, etc.)')
     parser.add_argument('-d', dest='debug', action='count',
                         help='Turn up debugging depth (use -d,-dd,-ddd)')
@@ -742,7 +742,7 @@ def main():
 
     if argv.radec:
         xim, yim = radec2xy(argv.image, argv.x, argv.y, ext=argv.ext)
-        if argv.verbose > 1:
+        if int(argv.verbose or 0) > 1:
             print("x,y position [fits-style, (1,1)-indexed]: %.2f %.2f" % (
                 xim, yim))
     else:
