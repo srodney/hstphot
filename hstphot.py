@@ -3,6 +3,7 @@
 __author__ = 'rodney'
 
 import sys
+import numpy as np
 if sys.version_info <= (3,0):
     import exceptions
 
@@ -351,8 +352,6 @@ def getzpt(image, system='Vega', ext=0):
 
     :return: float zeropoint magnitude
     """
-    import numpy as np
-
     header = getheader(image, ext=ext)
     filt = getfilter(header)
     camera = getcamera(header)
@@ -389,7 +388,6 @@ def getzptACS(image, system='Vega', ext=0):
 
     """
     import os
-    import numpy as np
     from astropy.io import ascii
     from scipy import interpolate as scint
 
@@ -421,8 +419,37 @@ def getzptACS(image, system='Vega', ext=0):
     return zptim
 
 
+def get_flux_and_err(imagedat, psfmodel, xy, ntestpositions=100, psfradpix=3,
+                     apradpix=3, skyannpix=None, skyalgorithm='sigmaclipping',
+                     setskyval=None, recenter_target=True, recenter_fakes=True,
+                     exptime=1, exact=True, ronoise=1, phpadu=1, verbose=False,
+                     debug=False):
+    from photutils import aperture_photometry, CircularAperture
+
+    apertures = []
+    for r in apradpix:
+        apertures.append(CircularAperture(xy, r))
+    phot_table = aperture_photometry(
+        imagedat, apertures, error=None, pixelwise_error=True, mask=None,
+        method=u'exact', subpixels=5, unit=None, wcs=None)
+
+
+    apflux = [phot_table['aperture_sum_%i'%i] for i in range(len(apertures))]
+    # TODO : compute the errors!  Measure the Sky brightness!
+    apfluxerr = np.zeros(len(apflux))
+    sky = 0.0
+    skyerr = 0.0
+
+    # TODO : psf fitting photometry!!
+    psfflux = 0.0
+    psffluxerr = 0.0
+
+    return apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr
+
+
 def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
-           psfimage=None, psfradpix=3, recenter=False, imfilename=None,
+           psfimage=None, psfradpix=3, photpackage='PythonPhot',
+           recenter=False, imfilename=None,
            ntestpositions=100, snthresh=0.0, zeropoint=None,
            filtername=None, exptime=None,
            skyannarcsec=[6.0, 12.0], skyval=None, skyalgorithm='sigmaclipping',
@@ -457,7 +484,6 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
        given pixel position)
     """
     from PythonPhot import photfunctions
-    import numpy as np
     import hstapcorr
 
     if debug == 1:
@@ -536,13 +562,23 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
     else:
         xpy, ypy = xc, yc
 
-    photoutput = photfunctions.get_flux_and_err(
-        imdat, psfimage, [xpy, ypy],
-        psfradpix=psfradpix, apradpix=appix, ntestpositions=ntestpositions,
-        skyannpix=skyannpix, skyalgorithm=skyalgorithm, setskyval=skyval,
-        recenter_target=recenter, recenter_fakes=True, exact=exact,
-        exptime=exptime, ronoise=1, phpadu=phpadu, verbose=verbose,
-        debug=debug)
+    if photpackage == 'PythonPhot':
+        photoutput = photfunctions.get_flux_and_err(
+            imdat, psfimage, [xpy, ypy],
+            psfradpix=psfradpix, apradpix=appix, ntestpositions=ntestpositions,
+            skyannpix=skyannpix, skyalgorithm=skyalgorithm, setskyval=skyval,
+            recenter_target=recenter, recenter_fakes=True, exact=exact,
+            exptime=exptime, ronoise=1, phpadu=phpadu, verbose=verbose,
+            debug=debug)
+    elif photpackage == 'photutils':
+        photoutput = get_flux_and_err(
+            imdat, psfimage, [xpy, ypy],
+            psfradpix=psfradpix, apradpix=appix, ntestpositions=ntestpositions,
+            skyannpix=skyannpix, skyalgorithm=skyalgorithm, setskyval=skyval,
+            recenter_target=recenter, recenter_fakes=True, exact=exact,
+            exptime=exptime, ronoise=1, phpadu=phpadu, verbose=verbose,
+            debug=debug)
+
     apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr = photoutput
     if not np.iterable(apflux):
         apflux = np.array([apflux])
@@ -657,7 +693,6 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
 def main():
     import os
     import argparse
-    from numpy import array
     from astropy.io import fits as pyfits
 
     parser = argparse.ArgumentParser(
@@ -668,6 +703,9 @@ def main():
     parser.add_argument('image', help='Drizzled HST image fits file.')
     parser.add_argument('x', type=float, help='X position or R.A.')
     parser.add_argument('y', type=float, help='Y position or Dec')
+    parser.add_argument('--photpackage', type=str, default='PythonPhot',
+                        choices=['PythonPhot', 'photutils'],
+                        help="Underlying photometry package to use.")
     parser.add_argument('--psfmodel', type=str, default=None,
                         help="Filename of a psf model fits file.")
     parser.add_argument('--ntest', type=int, default=None,
@@ -763,10 +801,11 @@ def main():
     if argv.AB:
         magsys = 'AB'
 
-    aplist = array([float(ap) for ap in argv.apertures.split(',')])
+    aplist = np.array([float(ap) for ap in argv.apertures.split(',')])
     skyannarcsec = [float(ap) for ap in argv.skyannulus.split(',')]
     maglinelist = dophot(argv.image, xim, yim, aplist,
                          psfimage=argv.psfmodel, ext=argv.ext,
+                         photpackage=argv.photpackage,
                          skyannarcsec=skyannarcsec, skyval=argv.skyval,
                          system=magsys, zeropoint=argv.zeropoint,
                          filtername=argv.filtername,
