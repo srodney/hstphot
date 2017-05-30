@@ -23,6 +23,50 @@ FilterAlpha = {'unknown': '?',
                }
 
 
+def getwcsobj(imfile_or_hdr, ext=0):
+    """Create a WCS object from the header of the given image file.
+    Checks if the WCS SIP distortion coefficients are included in the header,
+    and removes them if redundant.
+    """
+    from astropy.io import fits
+    from astropy.wcs import WCS
+
+    fobj = None
+    if isinstance(imfile_or_hdr, str):
+        fobj = fits.open(imfile_or_hdr)
+        header = fits.getheader(imfile_or_hdr, ext=ext)
+    elif isinstance(imfile_or_hdr, fits.Header):
+        header = imfile_or_hdr
+    else:
+        return None
+
+    # decide if this is a drizzled image file with SIP coefficients
+    drizzled = False
+    gotsip = False
+    imfilename = imfile_or_hdr.lower()
+    if imfilename.endswith('_drz.fits') or imfilename.endswith('_drc.fits'):
+        drizzled = True
+    if 'DRIZCORR' in header:
+        drizzled = header['DRIZCORR'].lower() == 'complete'
+    if 'A_ORDER' in header:
+        gotsip = True
+    if drizzled and gotsip:
+        for coeff in ['A','B']:
+            for ix in range(header[coeff+'_ORDER']):
+                for iy in range(header[coeff+'_ORDER']):
+                    key = '%s_%i_%i'%(coeff, ix, iy)
+                    if key in header:
+                        header.remove(key)
+            if coeff+'_ORDER' in header:
+                header.remove(coeff+'_ORDER')
+    try:
+        wcs = WCS(fobj=fobj, header=header)
+    except KeyError:
+        wcs = WCS(header=header)
+    fobj.close()
+    return wcs
+
+
 def radec2xy(imfile, ra, dec, ext=0):
     """ Convert the given ra,dec position (in decimal degrees) into
     x,y pixel coordinates on the given image.
@@ -30,16 +74,7 @@ def radec2xy(imfile, ra, dec, ext=0):
       of the lower left pixel at (1,1).  The numpy/scipy convention sets
       the center of the lower left pixel at (0,0).
     """
-    from astropy.io import fits
-    from astropy.wcs import WCS
-
-    fobj = fits.open(imfile)
-    header = fits.getheader(imfile, ext=ext)
-    try:
-        wcs = WCS(fobj=fobj, header=header)
-    except KeyError:
-        wcs = WCS(header=header)
-    fobj.close()
+    wcs = getwcsobj(imfile, ext=ext)
     x, y = wcs.wcs_world2pix(ra, dec, 1)
     return x, y
 
@@ -54,23 +89,12 @@ def xy2radec(imfile_or_hdr, x, y, ext=0):
 
     :param imfile_or_hdr: image filename or astropy.io.fits Header object
     """
-    from astropy.io import fits
-    from astropy.wcs import WCS
-
-    if isinstance(imfile_or_hdr, str):
-        header = fits.getheader(imfile_or_hdr, ext=ext)
-    elif isinstance(imfile_or_hdr, fits.Header):
-        header = imfile_or_hdr
-    else:
+    wcs = getwcsobj(imfile_or_hdr, ext=ext)
+    if wcs is None:
         print("WARNING: could not convert x,y to ra,dec for %s" %
-               str(imfile_or_hdr))
-    # try:
-    # alternate WCS construction may be necessary for ACS files ?
-    # wcs = WCS(fobj=fobj, header=header)
-    # except KeyError:
-    wcs = WCS(header=header)
-    # fobj.close()
-    ra, dec = wcs.all_pix2world(x, y, 1)
+              str(imfile_or_hdr))
+        return 0, 0
+    ra, dec = wcs.wcs_pix2world(x, y, 1)
     return ra, dec
 
 
