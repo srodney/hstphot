@@ -31,21 +31,21 @@ def getwcsobj(imfile_or_hdr, ext=0):
     from astropy.io import fits
     from astropy.wcs import WCS
 
+    drizzled = False
     fobj = None
     if isinstance(imfile_or_hdr, str):
         fobj = fits.open(imfile_or_hdr)
         header = fits.getheader(imfile_or_hdr, ext=ext)
+        imfilename = imfile_or_hdr.lower()
+        if imfilename.endswith('_drz.fits') or imfilename.endswith('_drc.fits'):
+            drizzled = True
     elif isinstance(imfile_or_hdr, fits.Header):
         header = imfile_or_hdr
     else:
         return None
 
     # decide if this is a drizzled image file with SIP coefficients
-    drizzled = False
     gotsip = False
-    imfilename = imfile_or_hdr.lower()
-    if imfilename.endswith('_drz.fits') or imfilename.endswith('_drc.fits'):
-        drizzled = True
     if 'DRIZCORR' in header:
         drizzled = header['DRIZCORR'].lower() == 'complete'
     if 'A_ORDER' in header:
