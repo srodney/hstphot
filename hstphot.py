@@ -61,7 +61,8 @@ def getwcsobj(imfile_or_hdr, ext=0):
                 header.remove(coeff+'_ORDER')
     try:
         wcs = WCS(fobj=fobj, header=header)
-        fobj.close()
+        if fobj is not None:
+            fobj.close()
     except KeyError:
         wcs = WCS(header=header)
     return wcs
@@ -448,17 +449,37 @@ def get_flux_and_err(imagedat, psfmodel, xy, ntestpositions=100, psfradpix=3,
                      setskyval=None, recenter_target=True, recenter_fakes=True,
                      exptime=1, exact=True, ronoise=1, phpadu=1, verbose=False,
                      debug=False):
+    """ Measure the flux (and uncertainty?) using photutils.
+    :param imagedat:
+    :param psfmodel:
+    :param xy:
+    :param ntestpositions:
+    :param psfradpix:
+    :param apradpix:
+    :param skyannpix:
+    :param skyalgorithm:
+    :param setskyval:
+    :param recenter_target:
+    :param recenter_fakes:
+    :param exptime:
+    :param exact:
+    :param ronoise:
+    :param phpadu:
+    :param verbose:
+    :param debug:
+    :return:
+    """
     from photutils import aperture_photometry, CircularAperture
 
-    apertures = []
+    apflux = []
     for r in apradpix:
-        apertures.append(CircularAperture(xy, r))
-    phot_table = aperture_photometry(
-        imagedat, apertures, error=None, pixelwise_error=True, mask=None,
-        method=u'exact', subpixels=5, unit=None, wcs=None)
+        apertures = CircularAperture(xy, r)
+        phot_table = aperture_photometry(
+            imagedat, apertures, error=None, pixelwise_error=True, mask=None,
+            method=u'exact', subpixels=5, unit=None, wcs=None)
 
+        apflux.append(phot_table['aperture_sum'])
 
-    apflux = [phot_table['aperture_sum_%i'%i] for i in range(len(apertures))]
     # TODO : compute the errors!  Measure the Sky brightness!
     apfluxerr = np.zeros(len(apflux))
     sky = 0.0
