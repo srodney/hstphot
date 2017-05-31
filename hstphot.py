@@ -61,9 +61,9 @@ def getwcsobj(imfile_or_hdr, ext=0):
                 header.remove(coeff+'_ORDER')
     try:
         wcs = WCS(fobj=fobj, header=header)
+        fobj.close()
     except KeyError:
         wcs = WCS(header=header)
-    fobj.close()
     return wcs
 
 
