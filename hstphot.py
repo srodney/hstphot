@@ -33,23 +33,28 @@ def getwcsobj(imfile_or_hdr, ext=0):
 
     drizzled = False
     fobj = None
+    imfilename = ''
     if isinstance(imfile_or_hdr, str):
         fobj = fits.open(imfile_or_hdr)
         header = fits.getheader(imfile_or_hdr, ext=ext)
         imfilename = imfile_or_hdr.lower()
-        if imfilename.endswith('_drz.fits') or imfilename.endswith('_drc.fits'):
-            drizzled = True
     elif isinstance(imfile_or_hdr, fits.Header):
         header = imfile_or_hdr
+        if 'FILENAME' in header:
+            imfilename = header['FILENAME']
     else:
         return None
 
+    if imfilename.endswith('_drz.fits') or imfilename.endswith('_drc.fits'):
+        drizzled = True
+
     # decide if this is a drizzled image file with SIP coefficients
     gotsip = False
-    if 'DRIZCORR' in header:
+    if not drizzled and 'DRIZCORR' in header:
         drizzled = header['DRIZCORR'].lower() == 'complete'
     if 'A_ORDER' in header:
         gotsip = True
+
     if drizzled and gotsip:
         for coeff in ['A','B']:
             for ix in range(header[coeff+'_ORDER']):
@@ -59,6 +64,7 @@ def getwcsobj(imfile_or_hdr, ext=0):
                         header.remove(key)
             if coeff+'_ORDER' in header:
                 header.remove(coeff+'_ORDER')
+
     try:
         wcs = WCS(fobj=fobj, header=header)
         if fobj is not None:
@@ -97,6 +103,8 @@ def xy2radec(imfile_or_hdr, x, y, ext=0):
         return 0, 0
     ra, dec = wcs.wcs_pix2world(x, y, 1)
     return ra, dec
+
+
 
 
 def getxycenter(image, x, y, ext=0, radec=False,
@@ -469,21 +477,44 @@ def get_flux_and_err(imagedat, psfmodel, xy, ntestpositions=100, psfradpix=3,
     :param debug:
     :return:
     """
-    from photutils import aperture_photometry, CircularAperture
+    from photutils import aperture_photometry, CircularAperture, CircularAnnulus
+
+    # Measure the Sky brightness!
+    if setskyval is not None:
+        sky = setskyval
+        skyerr = 0.0
+    elif np.iterable(skyannpix):
+        skyannulus = CircularAnnulus(xy, r_in=skyannpix[0], r_out=skyannpix[1])
+        phot_table = aperture_photometry(
+            imagedat, skyannulus, error=None, pixelwise_error=True, mask=None,
+            method=u'exact', subpixels=5, unit=None, wcs=None)
+        skyvaltot = phot_table['aperture_sum']
+        sky = skyvaltot / skyannulus.area()
+        skyerr = 0.0
+    else:
+        sky = 0.0
+        skyerr = 0.0
+
+
+    if not np.iterable(apradpix):
+        apradpix = [apradpix]
+    apertures = [CircularAperture(xy, r) for r in apradpix]
+    phot_table = aperture_photometry(
+        imagedat, apertures, error=None, pixelwise_error=True, mask=None,
+        method=u'exact', subpixels=5, unit=None, wcs=None)
 
     apflux = []
-    for r in apradpix:
-        apertures = CircularAperture(xy, r)
-        phot_table = aperture_photometry(
-            imagedat, apertures, error=None, pixelwise_error=True, mask=None,
-            method=u'exact', subpixels=5, unit=None, wcs=None)
+    if len(apertures) > 1:
+        for i in range(len(apradpix)):
+            flux = (phot_table['aperture_sum_%i' % i] -
+                    (sky * apertures[i].area()))
+            apflux.append(flux)
+    else:
+        flux = phot_table['aperture_sum'] - (sky * apertures[0].area())
+        apflux.append(flux)
 
-        apflux.append(phot_table['aperture_sum'])
-
-    # TODO : compute the errors!  Measure the Sky brightness!
+    # TODO : compute the errors!
     apfluxerr = np.zeros(len(apflux))
-    sky = 0.0
-    skyerr = 0.0
 
     # TODO : psf fitting photometry!!
     psfflux = 0.0
@@ -607,24 +638,31 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
     else:
         xpy, ypy = xc, yc
 
-    if photpackage == 'PythonPhot':
-        photoutput = photfunctions.get_flux_and_err(
-            imdat, psfimage, [xpy, ypy],
-            psfradpix=psfradpix, apradpix=appix, ntestpositions=ntestpositions,
-            skyannpix=skyannpix, skyalgorithm=skyalgorithm, setskyval=skyval,
-            recenter_target=recenter, recenter_fakes=True, exact=exact,
-            exptime=exptime, ronoise=1, phpadu=phpadu, verbose=verbose,
-            debug=debug)
-    elif photpackage == 'photutils':
-        photoutput = get_flux_and_err(
-            imdat, psfimage, [xpy, ypy],
-            psfradpix=psfradpix, apradpix=appix, ntestpositions=ntestpositions,
-            skyannpix=skyannpix, skyalgorithm=skyalgorithm, setskyval=skyval,
-            recenter_target=recenter, recenter_fakes=True, exact=exact,
-            exptime=exptime, ronoise=1, phpadu=phpadu, verbose=verbose,
-            debug=debug)
+    output_PythonPhot = photfunctions.get_flux_and_err(
+        imdat, psfimage, [xpy, ypy],
+        psfradpix=psfradpix, apradpix=appix, ntestpositions=ntestpositions,
+        skyannpix=skyannpix, skyalgorithm=skyalgorithm, setskyval=skyval,
+        recenter_target=recenter, recenter_fakes=True, exact=exact,
+        exptime=exptime, ronoise=1, phpadu=phpadu, verbose=verbose,
+        debug=debug)
+    apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr = output_PythonPhot
 
-    apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr = photoutput
+    if photpackage == 'photutils':
+        # the sky measurement algorithm in photutils is not quite the same as
+        # in PythonPhot, so for now, we adopt the PythonPhot sky value instead
+        # of letting photutils compute it.
+        if skyval is None:
+            skyval = sky
+        output_photutils = get_flux_and_err(
+            imdat, psfimage, [xpy, ypy],
+            psfradpix=psfradpix, apradpix=appix, ntestpositions=ntestpositions,
+            skyannpix=skyannpix, skyalgorithm=skyalgorithm, setskyval=skyval,
+            recenter_target=recenter, recenter_fakes=True, exact=exact,
+            exptime=exptime, ronoise=1, phpadu=phpadu, verbose=verbose,
+            debug=debug)
+        apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr = output_photutils
+
+
     if not np.iterable(apflux):
         apflux = np.array([apflux])
         apfluxerr = np.array([apfluxerr])
