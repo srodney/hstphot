@@ -529,7 +529,7 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
            ntestpositions=100, snthresh=0.0, zeropoint=None,
            filtername=None, exptime=None,
            skyannarcsec=[6.0, 12.0], skyval=None, skyalgorithm='sigmaclipping',
-           target=None, printstyle=None, exact=False, fitsconvention=True,
+           target=None, printstyle=None, exact=True, fitsconvention=True,
            phpadu=None, returnflux=False, verbose=False, debug=False):
     """ Measure the flux through aperture(s) and/or psf fitting and report
     observed fluxes and magnitudes.
@@ -804,9 +804,9 @@ def main():
                         help='Report AB mags (the default).')
     parser.add_argument('--vega', action='store_true',
                         help='Report Vega mags.')
-    parser.add_argument('--exact', action='store_true',
-                        help='Compute sub-pixel areas exactly (Slower. '
-                             'Necessary for small apertures.)')
+    parser.add_argument('--fast', action='store_true', default=False,
+                        help='Compute sub-pixel areas approximately (Faster. '
+                             'Safe for apertures much larger than a pixel.)')
     parser.add_argument('--apertures', type=str, default='0.4',
                         help='Size of photometry aperture(s) in arcsec. ')
     parser.add_argument('--filtername', type=str, default=None,
@@ -894,7 +894,7 @@ def main():
                          filtername=argv.filtername,
                          skyalgorithm=argv.skyalgorithm,
                          snthresh=argv.snthresh,
-                         exact=argv.exact,
+                         exact=(not argv.fast),
                          ntestpositions=argv.ntest,
                          recenter=False,  # recentering already done above
                          printstyle=argv.printstyle, target=argv.target,
