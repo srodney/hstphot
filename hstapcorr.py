@@ -1,3 +1,4 @@
+#! /usr/bin/env python
 # 2014.07.01
 # S.Rodney
 # Compute aperture corrections from Encircled Energy tables or P330E photometry
@@ -7,7 +8,7 @@ import os
 import sys
 import numpy as np
 
-def apcorrACSWFC( filter, aprad_arcsec, verbose=True ):
+def apcorrACSWFC( filter, aprad_arcsec, eetable='default', verbose=True ):
     """  Return the aperture correction for an ACS-WFC filter, derived from
     the STScI encircled energy tables.  If the aperture is 0.5" or 1.0" then
     the returned aperture correction is straight from the tables. Otherwise,
@@ -19,6 +20,8 @@ def apcorrACSWFC( filter, aprad_arcsec, verbose=True ):
     points.
     """
     from scipy import interpolate as scint
+
+    #TODO: Allow user to input an encircled energy table as an external file
 
     # Encircled energy fractions for ACS-WFC filters in 0.5" and 1.0" apertures
     # from Bohlin's ISR-II (2011) and ISR-IV (2012).
@@ -127,7 +130,7 @@ def apcorrWFC3UVIS( filt, aprad_arcsec ) :
         aperr = 0.005
     return( np.round(apcor,3), aperr )
 
-def apcorrWFC3IR( filt, aprad_arcsec ) :
+def apcorrWFC3IR( filt, aprad_arcsec, eetable='default' ) :
     """ compute the aperture correction and associated
     error for the given WFC3-IR filter, at the given
     aperture size (in arcseconds), derived from the STScI
@@ -140,30 +143,35 @@ def apcorrWFC3IR( filt, aprad_arcsec ) :
     # central filter wavelength, um, for WFC3-IR filter names
     filtwave = int(filt.strip( ascii_letters+punctuation ))  / 100.
 
-    # wavelengths and aperture sizes (in arcsec) for the x and y
-    # dimensions of the WFC3-IR encircled energy table, respectively
-    wl = [ 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7 ]
-    ap = [ 0.0, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50, 0.60, 0.80, 1.0, 1.5, 2.0, 5.5 ]
 
-    # The encircled energy table, from
-    # http://www.stsci.edu/hst/wfc3/documents/handbooks/currentIHB/c07_ir07.html#401707
-    # http://www.stsci.edu/hst/wfc3/phot_zp_lbn
-    ee = np.array( [
-    [ 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000 ],
-    [ 0.575, 0.549, 0.524, 0.502, 0.484, 0.468, 0.453, 0.438, 0.426, 0.410, 0.394 ],
-    [ 0.736, 0.714, 0.685, 0.653, 0.623, 0.596, 0.575, 0.558, 0.550, 0.539, 0.531 ],
-    [ 0.802, 0.794, 0.780, 0.762, 0.739, 0.712, 0.683, 0.653, 0.631, 0.608, 0.590 ],
-    [ 0.831, 0.827, 0.821, 0.813, 0.804, 0.792, 0.776, 0.756, 0.735, 0.708, 0.679 ],
-    [ 0.850, 0.845, 0.838, 0.833, 0.828, 0.822, 0.816, 0.808, 0.803, 0.789, 0.770 ],
-    [ 0.878, 0.876, 0.869, 0.859, 0.850, 0.845, 0.841, 0.838, 0.840, 0.836, 0.832 ],
-    [ 0.899, 0.894, 0.889, 0.884, 0.878, 0.868, 0.858, 0.852, 0.854, 0.850, 0.848 ],
-    [ 0.916, 0.913, 0.904, 0.897, 0.893, 0.889, 0.883, 0.875, 0.870, 0.863, 0.859 ],
-    [ 0.937, 0.936, 0.929, 0.924, 0.918, 0.909, 0.903, 0.900, 0.903, 0.900, 0.895 ],
-    [ 0.951, 0.951, 0.946, 0.941, 0.935, 0.930, 0.925, 0.920, 0.917, 0.912, 0.909 ],
-    [ 0.967, 0.969, 0.967, 0.965, 0.963, 0.959, 0.954, 0.951, 0.952, 0.948, 0.943 ],
-    [ 0.974, 0.977, 0.976, 0.975, 0.973, 0.972, 0.969, 0.967, 0.970, 0.967, 0.963 ],
-    [ 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000 ],
-    ] )
+    if eetable == 'default':
+        # wavelengths and aperture sizes (in arcsec) for the x and y
+        # dimensions of the WFC3-IR encircled energy table, respectively
+        wl = [ 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7 ]
+        ap = [ 0.0, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50, 0.60, 0.80, 1.0, 1.5, 2.0, 5.5 ]
+
+        # The encircled energy table, from
+        # http://www.stsci.edu/hst/wfc3/documents/handbooks/currentIHB/c07_ir07.html#401707
+        # http://www.stsci.edu/hst/wfc3/phot_zp_lbn
+        ee = np.array( [
+        [ 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000 ],
+        [ 0.575, 0.549, 0.524, 0.502, 0.484, 0.468, 0.453, 0.438, 0.426, 0.410, 0.394 ],
+        [ 0.736, 0.714, 0.685, 0.653, 0.623, 0.596, 0.575, 0.558, 0.550, 0.539, 0.531 ],
+        [ 0.802, 0.794, 0.780, 0.762, 0.739, 0.712, 0.683, 0.653, 0.631, 0.608, 0.590 ],
+        [ 0.831, 0.827, 0.821, 0.813, 0.804, 0.792, 0.776, 0.756, 0.735, 0.708, 0.679 ],
+        [ 0.850, 0.845, 0.838, 0.833, 0.828, 0.822, 0.816, 0.808, 0.803, 0.789, 0.770 ],
+        [ 0.878, 0.876, 0.869, 0.859, 0.850, 0.845, 0.841, 0.838, 0.840, 0.836, 0.832 ],
+        [ 0.899, 0.894, 0.889, 0.884, 0.878, 0.868, 0.858, 0.852, 0.854, 0.850, 0.848 ],
+        [ 0.916, 0.913, 0.904, 0.897, 0.893, 0.889, 0.883, 0.875, 0.870, 0.863, 0.859 ],
+        [ 0.937, 0.936, 0.929, 0.924, 0.918, 0.909, 0.903, 0.900, 0.903, 0.900, 0.895 ],
+        [ 0.951, 0.951, 0.946, 0.941, 0.935, 0.930, 0.925, 0.920, 0.917, 0.912, 0.909 ],
+        [ 0.967, 0.969, 0.967, 0.965, 0.963, 0.959, 0.954, 0.951, 0.952, 0.948, 0.943 ],
+        [ 0.974, 0.977, 0.976, 0.975, 0.973, 0.972, 0.969, 0.967, 0.970, 0.967, 0.963 ],
+        [ 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000 ],
+        ] )
+    else:
+        wl, ap, ee = read_eetable(eetable)
+    # import pdb; pdb.set_trace()
 
     ee_interp = scint.interp2d( wl, ap, ee, kind='linear', bounds_error=False, fill_value=1.0 )
     EEfrac_ap = ee_interp( filtwave, aprad_arcsec  ).reshape( np.shape(aprad_arcsec) )
@@ -332,3 +340,80 @@ def plotapcorr_P330E( filter='all' ):
     fig.text( 0.05, 0.5, 'aperture correction (mag)', ha='center',va='center', rotation=90)
 
 
+def read_eetable(filename):
+    """ Read in an encircled energy table data file and report the results
+    """
+    from astropy.table import Table
+    from string import ascii_letters, punctuation
+
+    # TODO :  accommodate other data table formats
+    eedat = Table.read(filename, format='ascii.fixed_width')
+    ap = eedat['APER'].data
+
+    # TODO : update to handle ACS filters too
+    #  determine the wavelength in nm for each filter:
+    filterlist = [colname.lstrip('E').lower() for colname in eedat.colnames
+                  if not colname.lower().startswith('aper')]
+    wl = [int(filtername.strip(ascii_letters + punctuation)) / 100.
+          for filtername in filterlist]
+    eedat.remove_column('APER')
+    eedatarray = np.array([list(eerow) for eerow in eedat])
+
+    return(wl, ap, eedatarray)
+
+
+def main():
+    import os
+    import argparse
+    from astropy.io import fits as pyfits
+
+    parser = argparse.ArgumentParser(
+        description=("Convert an Encircled Energy table into a list of "
+                     " aperture corrections for specific HST filters."))
+
+
+    # Required positional argument
+    parser.add_argument('eetable', help='Encircled energy table data file.')
+    parser.add_argument('--filters', type=str, default='F105W,F125W,F140W,F160W',
+                        help="Comma-separated list of HST filters.")
+    parser.add_argument('--AB', action='store_true',
+                        help='Use AB mags (the default).')
+    parser.add_argument('--vega', action='store_true',
+                        help='Use Vega mags.')
+    parser.add_argument('--apertures', type=str, default='0.1,0.2,0.3,0.4',
+                        help='List of aperture(s) in arcsec. ')
+    parser.add_argument('-v', dest='verbose', action='count', default=0,
+                        help='Turn verbosity up (use -v,-vv,-vvv, etc.)')
+    parser.add_argument('-d', dest='debug', action='count',
+                        help='Turn up debugging depth (use -d,-dd,-ddd)')
+
+    argv = parser.parse_args()
+
+
+    magsys = 'AB'
+    if argv.vega:
+        magsys = 'Vega'
+    if argv.AB:
+        magsys = 'AB'
+
+    filterlist = np.array([f.lower() for f in argv.filters.split(',')])
+    aplist = np.array([float(ap) for ap in argv.apertures.split(',')])
+
+    print('#filter  aperture  m_apcorr err_apcorr')
+    for filtername in filterlist:
+        apcorrlist = []
+        for aparcsec in aplist:
+            if filtername.lower().startswith('f1'):
+                apcorr, apcorrerr = apcorrWFC3IR(filtername, aparcsec,
+                                                 eetable = argv.eetable)
+            else:
+                #TODO : map filters to camera more carefully
+                apcorr, apcorrerr = apcorrACSWFC(
+                    filtername, aparcsec, eetable=argv.eetable)
+            print '%7s  %7.2f   %7.3f  %7.3f' % (filtername, aparcsec, apcorr, apcorrerr)
+            apcorrlist.append(apcorr)
+        #print( '%s %s' % (filtername, str(apcorrlist)))
+
+
+if __name__ == '__main__':
+    main()
