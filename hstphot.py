@@ -527,7 +527,7 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
            psfimage=None, psfradpix=3, photpackage='PythonPhot',
            recenter=False, imfilename=None,
            ntestpositions=100, snthresh=0.0, zeropoint=None,
-           filtername=None, exptime=None,
+           filtername=None, exptime=None, pixscale=None,
            skyannarcsec=[6.0, 12.0], skyval=None, skyalgorithm='sigmaclipping',
            target=None, printstyle=None, exact=True, fitsconvention=True,
            phpadu=None, returnflux=False, verbose=False, debug=False):
@@ -593,11 +593,12 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
             raise exceptions.RuntimeError(
                 "Cannot determine exposure time for %s" % imfilename)
 
-    pixscale = getpixscale(imhdr, ext=ext)
-    if not np.iterable(aparcsec):
-        aparcsec = np.array([aparcsec])
-    elif not isinstance(aparcsec, np.ndarray):
-        aparcsec = np.array(aparcsec)
+    if not pixscale:
+        pixscale = getpixscale(imhdr, ext=ext)
+        if not np.iterable(aparcsec):
+            aparcsec = np.array([aparcsec])
+        elif not isinstance(aparcsec, np.ndarray):
+            aparcsec = np.array(aparcsec)
 
     appix = np.array([ap / pixscale for ap in aparcsec])
     skyannpix = np.array([skyrad / pixscale for skyrad in skyannarcsec])
@@ -812,6 +813,12 @@ def main():
     parser.add_argument('--filtername', type=str, default=None,
                         help='HST filter name (if not provided, we will read '
                              'it from the header)')
+    parser.add_argument('--pixscale', type=float, default=None,
+                        help='Pixel scale (arcsec/pixel) -- if not provided, '
+                             'we will try to read it from the header)')
+    parser.add_argument('--exptime', type=float, default=None,
+                        help='Exposure time in sec (if not provided, we will '
+                             'try to read it from the header)')
     parser.add_argument('--skyannulus', metavar='6.0,12.0', type=str,
                         default='6.0,12.0',
                         help='Inner and outer radius of sky annulus in '
@@ -891,7 +898,8 @@ def main():
                          photpackage=argv.photpackage,
                          skyannarcsec=skyannarcsec, skyval=argv.skyval,
                          system=magsys, zeropoint=argv.zeropoint,
-                         filtername=argv.filtername,
+                         filtername=argv.filtername, exptime=argv.exptime,
+                         pixscale=argv.pixscale,
                          skyalgorithm=argv.skyalgorithm,
                          snthresh=argv.snthresh,
                          exact=(not argv.fast),
