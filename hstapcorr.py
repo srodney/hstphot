@@ -376,10 +376,6 @@ def main():
     parser.add_argument('eetable', help='Encircled energy table data file.')
     parser.add_argument('--filters', type=str, default='F105W,F125W,F140W,F160W',
                         help="Comma-separated list of HST filters.")
-    parser.add_argument('--AB', action='store_true',
-                        help='Use AB mags (the default).')
-    parser.add_argument('--vega', action='store_true',
-                        help='Use Vega mags.')
     parser.add_argument('--apertures', type=str, default='0.1,0.2,0.3,0.4',
                         help='List of aperture(s) in arcsec. ')
     parser.add_argument('-v', dest='verbose', action='count', default=0,
@@ -388,13 +384,6 @@ def main():
                         help='Turn up debugging depth (use -d,-dd,-ddd)')
 
     argv = parser.parse_args()
-
-
-    magsys = 'AB'
-    if argv.vega:
-        magsys = 'Vega'
-    if argv.AB:
-        magsys = 'AB'
 
     filterlist = np.array([f.lower() for f in argv.filters.split(',')])
     aplist = np.array([float(ap) for ap in argv.apertures.split(',')])

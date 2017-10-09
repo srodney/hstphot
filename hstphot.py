@@ -222,7 +222,15 @@ def getfwhmpix(image, ext=0):
               "  so we are arbitrarily setting the FWHM to 2.5 pixels for "
               "centroiding")
         return 2.5
-    pixscale = getpixscale(hdr)
+
+    try:
+        pixscale = getpixscale(hdr)
+    except KeyError:
+        print("WARNING : Can't determine the pixel scale from the header, "
+              "  so we are arbitrarily setting the FWHM to 2.5 pixels for "
+              "centroiding")
+        return 2.5
+
     fwhmpix = fwhmarcsec / pixscale
     return fwhmpix
 
