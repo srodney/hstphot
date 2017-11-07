@@ -1,8 +1,9 @@
+#! /usr/bin/env python
 import os
 import numpy as np
 from PythonPhot import getpsf, aper
 from astropy.io import fits as pyfits
-from . import hstphot
+
 
 def getcamera(imfile):
     """ Determine the camera name (e.g. ACS-WFC or WFC3-IR)
@@ -12,6 +13,7 @@ def getcamera(imfile):
     :param imfile:
     :return:
     """
+    import hstphot
     hdr = hstphot.getheader(imfile)
     instrument, detector = '', ''
     if 'CAMERA' in hdr:
@@ -156,6 +158,7 @@ def mkpsfmodel(psfimage, psfrad=0.6, fitrad=0.3, pixscale=0.03,
     """
     # TODO : currently the units in the __doc__ text are guesses. Need to
     # review the code  in the PythonPhot source and check
+    import hstphot
 
     # convert user-supplied radii from arcsec to pixels
     psfradpix = psfrad / pixscale
@@ -176,6 +179,7 @@ def mkpsfmodel(psfimage, psfrad=0.6, fitrad=0.3, pixscale=0.03,
             xmid, ymid, xpos, ypos))
     xpos = np.array([xpos])
     ypos = np.array([ypos])
+    mag = np.array([mag])
     idpsf = np.arange(len(xpos))
 
     # use the star at those coords to generate a PSF model
@@ -187,3 +191,26 @@ def mkpsfmodel(psfimage, psfrad=0.6, fitrad=0.3, pixscale=0.03,
         print("PSF image written to %s" % outputfile)
     return outputfile, gauss, psf, psfmag
 
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Make a PythonPhot psf model from the a single-star image")
+
+    # Required positional argument
+    parser.add_argument('inputimage',
+                        help='FITS file with a single star at the center.')
+
+    # optional keyword arguments
+    parser.add_argument('--pixscale', type=float,
+                        default=0.03,
+                        help="arcseconds per pixel.")
+
+    argv = parser.parse_args()
+
+    mkpsfmodel(argv.inputimage, pixscale=argv.pixscale)
+
+
+if __name__ == '__main__':
+    main()
