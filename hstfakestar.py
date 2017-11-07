@@ -4,7 +4,7 @@ from hstphot import radec2xy
 from astropy.io import fits as pyfits
 import numpy as np
 from PythonPhot.photfunctions import rdpsfmodel
-from PythonPhot.fakestar import addtoimarray
+from PythonPhot.photfunctions import addtoimarray
 
 def addtofits(fitsin, fitsout, psfmodelfile, position, fluxscale,
               coordsys='xy', verbose=False):
