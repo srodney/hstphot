@@ -538,7 +538,8 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
            filtername=None, exptime=None, pixscale=None,
            skyannarcsec=[6.0, 12.0], skyval=None, skyalgorithm='sigmaclipping',
            target=None, printstyle=None, exact=True, fitsconvention=True,
-           phpadu=None, returnflux=False, verbose=False, debug=False):
+           phpadu=None, returnflux=False, showfit=False,
+           verbose=False, debug=False):
     """ Measure the flux through aperture(s) and/or psf fitting and report
     observed fluxes and magnitudes.
 
@@ -652,8 +653,8 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
         psfradpix=psfradpix, apradpix=appix, ntestpositions=ntestpositions,
         skyannpix=skyannpix, skyalgorithm=skyalgorithm, setskyval=skyval,
         recenter_target=recenter, recenter_fakes=True, exact=exact,
-        exptime=exptime, ronoise=1, phpadu=phpadu, verbose=verbose,
-        debug=debug)
+        exptime=exptime, ronoise=1, phpadu=phpadu,
+        showfit=showfit, verbose=verbose, debug=debug)
     apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr = output_PythonPhot
 
     if photpackage == 'photutils':
@@ -853,6 +854,9 @@ def main():
     parser.add_argument('--phpadu', type=float, default=None,
                         help='Photons per ADU (for converting data numbers '
                              'to photon counts).')
+    parser.add_argument('--showfit', action='store_true',
+                        help='Show the target, scaled PSF model '
+                             'and residual images.')
     parser.add_argument('-v', dest='verbose', action='count', default=0,
                         help='Turn verbosity up (use -v,-vv,-vvv, etc.)')
     parser.add_argument('-d', dest='debug', action='count',
@@ -914,8 +918,8 @@ def main():
                          ntestpositions=argv.ntest,
                          recenter=False,  # recentering already done above
                          printstyle=argv.printstyle, target=argv.target,
-                         phpadu=argv.phpadu, verbose=argv.verbose,
-                         debug=argv.debug)
+                         phpadu=argv.phpadu, showfit=argv.showfit,
+                         verbose=argv.verbose,  debug=argv.debug)
     for iap in range(len(maglinelist)):
         print(maglinelist[iap].strip())
 
