@@ -131,7 +131,17 @@ def mkpsfmodel_stdstar(psfimdir="./", psfrad=0.3, fitrad=0.15,
     return
 
 
-def mkpsfmodel(psfimage, psfrad=0.6, fitrad=0.3, pixscale=0.03,
+def bin_image_data(arr, binfactor):
+    # bin an array by reshaping it into a higher-order array and taking
+    # the sum over the new dimension
+    old_shape = arr.shape
+    new_shape = np.array(old_shape) / binfactor
+    shape = (new_shape[0], arr.shape[0] // new_shape[0],
+             new_shape[1], arr.shape[1] // new_shape[1])
+    return arr.reshape(shape).sum(-1).sum(1)
+
+
+def mkpsfmodel(psfimage, psfrad=0.6, fitrad=0.3, pixscale=0.03, binning=None,
                phpadu=1, rdnoise=0, mag=25, zeropoint=25, sky=0,
                verbose=True):
     """ Construct a psf model from drizzled HST images of a
@@ -181,6 +191,18 @@ def mkpsfmodel(psfimage, psfrad=0.6, fitrad=0.3, pixscale=0.03,
     ypos = np.array([ypos])
     mag = np.array([mag])
     idpsf = np.arange(len(xpos))
+
+    if binning is not None:
+        assert isinstance(binning, int)
+        assert not (imdat.shape[0] % binning)
+        assert not (imdat.shape[1] % binning)
+        imdat = bin_image_data(imdat, binning)
+        xpos /= binning
+        ypos /= binning
+        psfradpix /= binning
+        fitradpix /= binning
+        print("Binning input image %i x %i" % (binning, binning))
+
 
     # use the star at those coords to generate a PSF model
     gauss, psf, psfmag = getpsf.getpsf(
