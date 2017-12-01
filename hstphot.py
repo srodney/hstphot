@@ -140,6 +140,7 @@ def getxycenter(image, x, y, ext=0, radec=False,
             print('Recentering within a 5-pixel box')
         xc, yc = cntrd.cntrd(imdat, x, y, fwhmpix,
                              verbose=verbose, extendbox=5)
+        if xc == -1: raise RuntimeError('Error : centroiding failed!')
     if fitsconvention:
         xc, yc = xc + 1, yc + 1
     return xc, yc
@@ -347,6 +348,7 @@ def get_header_and_data(image, ext=None):
                                           ' 2 entries, giving [hdr,data]')
     else:
         raise exceptions.RuntimeError('input object type %s is unrecognized')
+
     return hdr, data
 
 
@@ -855,7 +857,7 @@ def main():
                              'to photon counts).')
     parser.add_argument('-v', dest='verbose', action='count', default=0,
                         help='Turn verbosity up (use -v,-vv,-vvv, etc.)')
-    parser.add_argument('-d', dest='debug', action='count',
+    parser.add_argument('-d', dest='debug', action='count', default=0,
                         help='Turn up debugging depth (use -d,-dd,-ddd)')
 
     argv = parser.parse_args()

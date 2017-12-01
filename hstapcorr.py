@@ -399,7 +399,7 @@ def main():
                 #TODO : map filters to camera more carefully
                 apcorr, apcorrerr = apcorrACSWFC(
                     filtername, aparcsec, eetable=argv.eetable)
-            print '%7s  %7.2f   %7.3f  %7.3f' % (filtername, aparcsec, apcorr, apcorrerr)
+            print('%7s  %7.2f   %7.3f  %7.3f' % (filtername, aparcsec, apcorr, apcorrerr))
             apcorrlist.append(apcorr)
         #print( '%s %s' % (filtername, str(apcorrlist)))
 
