@@ -20,7 +20,9 @@ _HST_WFC3_PSF_FWHM_ARCSEC = 0.14  # FWHM of the HST WFC3IR PSF in arcsec
 def centroid(imdat, x0, y0, boxsize=11):
     """ Locate a source in the image near position (x0,y0) using a 2-D gaussian 
     centroid algorithm. 
-    :param x0, y0: initial guess of x,y location of the source 
+    :param imdat: image data (2-D array)
+    :param x0: initial guess of x pixel location of the source 
+    :param y0: initial guess of y pixel location of the source 
     :param boxsize: size of the box to search in (pixels) 
     :return: 
     """
@@ -29,10 +31,11 @@ def centroid(imdat, x0, y0, boxsize=11):
     # or the target location specified by the user)
     halfbox = boxsize / 2.
     mask = np.ones(imdat.shape, dtype=bool)
-    mask[int(y0) - halfbox:int(y0) + halfbox,
-         int(x0) - halfbox:int(x0) + halfbox] = False
 
+    mask[int(y0 - halfbox):int(y0 + halfbox),
+         int(x0 - halfbox):int(x0 + halfbox)] = False
     xnew, ynew = photutils.centroid_2dg(imdat, mask=mask)
+
     return xnew, ynew
 
 
@@ -70,33 +73,43 @@ class TargetImage(object):
         # user-specified names for the psf models.
         self.photometry = {}
 
+    @property
+    def target_table(self):
+        """ Returns a Table object with the centroid coordinates and the required
+        column names x_0 and y_0. We include a flux_0 column to
+        give an initial guess for the flux of the star."""
+
+        if self.flux_0 is None:
+            target_table = Table(
+                data=[[self.x_0], [self.y_0]], names=['x_0', 'y_0'])
+        else:
+            target_table = Table(
+                data=[[self.x_0], [self.y_0], [self.flux_0]],
+                names=['x_0','y_0','flux_0'])
+        return target_table
+
 
     # TODO : allow multiple targets?
     def set_target(self, x_0=None, y_0=None, flux_0=None,
-                          recenter=False):
+                   recenter=False):
         """set the pixel location and optionally the flux of the target"""
         # TODO: allow RA,Dec location
-        if x_0 is None and y_0 is None:
-            x_0, y_0 = self.imdat.shape[0] / 2., self.imdat.shape[1] / 2.
+        if x_0 is None:
+            self.x_0 = self.imdat.shape[0] / 2.
+        else:
+            self.x_0 = x_0
+        if y_0 is None:
+            self.y_0 = self.imdat.shape[1] / 2.
+        else:
+            self.y_0 = y_0
 
         if recenter:
             # Apply a centroiding algorithm to locate the source in the image
-            self.x_0, self.y_0 = centroid(self.imdat, x_0, y_0)
+            self.x_0, self.y_0 = centroid(self.imdat, self.x_0, self.y_0)
 
         # If the user leaves flux0 as None then aperture photometry will
         # be used for the first guess at the flux of the target
         self.flux_0 = flux_0
-
-        # Set up a Table object with the centroid coordinates and the required
-        # column names x_0 and y_0. We include a flux_0 column to
-        # give an initial guess for the flux of the star.
-        if self.flux_0 is None:
-            self.target_table = Table(
-                data=[[self.x_0], [self.y_0]], names=['x_0', 'y_0'])
-        else:
-            self.target_table = Table(
-                data=[[self.x_0], [self.y_0], [self.flux_0]],
-                names=['x_0','y_0','flux_0'])
 
 
     def load_psfmodel(self, psfimfilename, modelname=None, **kwargs):
