@@ -496,7 +496,7 @@ def get_flux_and_err(imagedat, psfmodel, xy, ntestpositions=100, psfradpix=3,
     elif np.iterable(skyannpix):
         skyannulus = CircularAnnulus(xy, r_in=skyannpix[0], r_out=skyannpix[1])
         phot_table = aperture_photometry(
-            imagedat, skyannulus, error=None, pixelwise_error=True, mask=None,
+            imagedat, skyannulus, error=None, mask=None,
             method=u'exact', subpixels=5, unit=None, wcs=None)
         skyvaltot = phot_table['aperture_sum']
         sky = skyvaltot / skyannulus.area()
@@ -510,7 +510,7 @@ def get_flux_and_err(imagedat, psfmodel, xy, ntestpositions=100, psfradpix=3,
         apradpix = [apradpix]
     apertures = [CircularAperture(xy, r) for r in apradpix]
     phot_table = aperture_photometry(
-        imagedat, apertures, error=None, pixelwise_error=True, mask=None,
+        imagedat, apertures, error=None,  mask=None,
         method=u'exact', subpixels=5, unit=None, wcs=None)
 
     apflux = []
