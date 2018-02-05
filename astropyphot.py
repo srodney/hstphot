@@ -19,6 +19,7 @@ from astropy.table import Column
 from astropy.stats import gaussian_sigma_to_fwhm, gaussian_fwhm_to_sigma
 
 from . import hstzpt_apcorr
+from . import hstphot
 
 _HST_WFC3_PSF_FWHM_ARCSEC = 0.14  # FWHM of the HST WFC3IR PSF in arcsec
 
@@ -54,16 +55,36 @@ class Photometry(object):
         self.photresults = None
 
 
-    def convert_fluxes_to_mags(self, photsys='AB'):
+    def convert_fluxes_to_mags(self, zpt, camera, photsys='AB'):
         """Apply zero points and aperture corrections to convert the measured
         fluxes into magnitudes
         :param photsys:  'AB' or 'Vega';  the magnitude system to use
         """
-        # TODO: extract from the photresults table for each aperture:
-        # TODO:  * the flux measurements
-        # TODO:  * the aperture radius
-        # TODO: then get the aperture correction and apply it
-        # TODO: mark that the aperture correction has been applied.
+
+        if 'aperturephot' in self.photresults:
+            # extract the measured fluxes from the aperture photometry table
+            apphot_table = self.photresults['aperturephot']
+            apidlist = [int(k.split('_')[-1])
+                        for k in apphot_table
+                        if k.startswith('aperture_sum')]
+            apflux = [apphot_table['aperture_sum_{:d}'.format(apidlist[i])]
+                      for i in apidlist]
+            apradius = [apphot_table['radius_arcsec_{:d}'.format(apidlist[i])]
+                        for i in apidlist]
+            # TODO: get flux uncertainties too!!
+
+            # get the aperture corrections
+            if camera == 'WFC3-IR':
+                apcor, aperr = hstzpt_apcorr.apcorrWFC3IR(filtername, apradius)
+            elif camera == 'WFC3-UVIS':
+                apcor, aperr = hstzpt_apcorr.apcorrWFC3UVIS(filtername, apradius)
+            elif camera == 'ACS-WFC':
+                apcor, aperr = hstzpt_apcorr.apcorrACSWFC(filtername, apradius)
+
+
+            # TODO: mark that the aperture correction has been applied.
+
+
         apflux = None
         apfluxerr = None
         aparcsec = None
@@ -73,39 +94,35 @@ class Photometry(object):
         camera = None
         filtername = None
 
-        if not np.iterable(apflux):
-            apflux = np.array([apflux])
-            apfluxerr = np.array([apfluxerr])
-
         # Define aperture corrections for each aperture
-        if zeropoint is not None:
-            zpt = zeropoint
-            apcor = np.zeros(len(aparcsec))
-            aperr = np.zeros(len(aparcsec))
-        else:
-            zpt = hstzpt_apcorr.getzpt(image, system=photsys)
-            if camera == 'WFC3-IR':
-                apcor, aperr = hstzpt_apcorr.apcorrWFC3IR(filtername, aparcsec)
-            elif camera == 'WFC3-UVIS':
-                apcor, aperr = hstzpt_apcorr.apcorrWFC3UVIS(filtername, aparcsec)
-            elif camera == 'ACS-WFC':
-                apcor, aperr = hstzpt_apcorr.apcorrACSWFC(filtername, aparcsec)
+        apcor = np.zeros(len(aparcsec))
+        aperr = np.zeros(len(aparcsec))
+
 
 
 class TargetImage(object):
     """An image containing an isolated point source to be photometered."""
 
-    def __init__(self, imfilename):
+    def __init__(self, imfilename, ext=None, photsys='AB'):
         """ 
         :param imfilename: full path for a .fits image file
+        :param ext:  Fits image extension containing the image data.
+        :param photsys: Photometric system 'AB' or 'Vega'
         """
 
         # read in the target image and determine the pixel scale (arcsec/pix)
-        targetim = fits.open(imfilename)
-        self.imdat = targetim[0].data
-        self.wcs = wcs.WCS(targetim[0].header)
+        imhdr, imdat = hstphot.getheaderanddata(imfilename, ext=ext)
+        self.imdat = imdat
+        self.imhdr = imhdr
+        self.wcs = wcs.WCS(self.imhdr)
         self.pixscale = np.mean(
             wcs.utils.proj_plane_pixel_scales(self.wcs.celestial) * 3600)
+
+        # Instrument, Camera, and Zero point
+        self.photsys = photsys
+        self.zpt = hstzpt_apcorr.getzpt([imhdr, imdat], system=self.photsys)
+        self.camera = hstphot.getcamera([imhdr, imdat])
+        self.filter = hstphot.getfilter([imhdr, imdat])
 
         # initial guesses of position and flux of the target source
         self.x_0 = None
@@ -116,6 +133,7 @@ class TargetImage(object):
         self.skyxy = None
         self.skyannpix = None
         self.skyvalperpix = None
+
 
         # Dictionary of Photometry objects. Each entry will hold a PSF model,
         # photometry object, and phot results table. Keyed with
@@ -243,7 +261,7 @@ class TargetImage(object):
         return
 
     def doapphot(self, apradlist, units='arcsec'):
-        """ Measure the flux in one ore more apertures.
+        """ Measure the flux in one or more apertures.
         :param apradlist: float or array-like
            aperture radius or list of radii.  
         :param units: 'arcsec' or 'pixels'; 
@@ -262,14 +280,23 @@ class TargetImage(object):
             self.imdat, apertures, error=None, mask=None,
             method=u'exact', subpixels=5, unit=None, wcs=None)
 
+        # Modify the output photometry table
+        if 'aperture_sum' in phot_table.colnames:
+            # if we had only a single aperture, then the aperture sum column
+            # has no index number at the end. So we add it.
+            phot_table.rename_column('aperture_sum', 'aperture_sum_0')
         for i in range(len(apertures)):
-            colname = 'aprad_arcsec_{:d}'.format(i)
+            # add a column for each aperture specifying the radius in arcsec
+            colname = 'radius_arcsec_{:d}'.format(i)
             apradarcsec = apradlist[i] * self.pixscale
             apcol = Column(name=colname, data=[apradarcsec,])
             phot_table.add_column(apcol)
 
         self.photometry['aperturephot'] = Photometry('aperturephot')
         self.photometry['aperturephot'].photresults = phot_table
+
+        #self.photometry['aperturephot'].convert_fluxes_to_mags(
+        #    zpt=self.zpt, photsys=self.photsys)
 
 
     def plot_resid_image(self, modelname, Npix=15):

@@ -352,13 +352,14 @@ def getheaderanddata(image, ext=None):
 
 
 def doastropyphot(targetimfilename, xy, psfimfilename=None,
-                     psfpixscale=None, recenter_target=True,
-                     apradarcsec=[0.1,0.2,0.3], skyannradarcsec=[3.0,5.0],
-                     ntestpositions=100, psfradpix=3,
-                     apradpix=3, skyannpix=None, skyalgorithm='sigmaclipping',
-                     setskyval=None, recenter_fakes=True,
-                     exptime=1, exact=True, ronoise=1, phpadu=1, verbose=False,
-                     debug=False):
+                  psfpixscale=None, recenter_target=True,
+                  apradarcsec=[0.1,0.2,0.3], skyannradarcsec=[3.0,5.0],
+                  fitpix=11,
+                  ntestpositions=100, psfradpix=3,
+                  skyannpix=None, skyalgorithm='sigmaclipping',
+                  setskyval=None, recenter_fakes=True,
+                  exptime=1, exact=True, ronoise=1, phpadu=1, verbose=False,
+                  debug=False):
     """ Measure the flux (and uncertainty?) using the astropy-affiliated
     photutils package.
 
@@ -397,18 +398,18 @@ def doastropyphot(targetimfilename, xy, psfimfilename=None,
     targetim.set_target(x_0=xy[0], y_0=xy[1], recenter=recenter_target)
 
     targetim.doapphot(apradarcsec, units='arcsec')
-    apphotresults = targetim.photometry['aperturephot'].photresults
+    # apphotresults = targetim.photometry['aperturephot'].photresults
 
     if psfimfilename is not None:
         psfmodelname = path.basename(psfimfilename)
         targetim.load_psfmodel(psfimfilename, psfmodelname,
                                psfpixscale=psfpixscale)
-        targetim.dopsfphot()
-        psfphotresults = targetim.photometry[psfmodelname].photresults
-        return(apphotresults, psfphotresults)
-    else:
-        return (apphotresults)
+        apradpix = np.max([5, np.round(fitpix/2.)])
+        targetim.dopsfphot(psfmodelname, fitpix=fitpix, apradpix=apradpix)
+        # psfphotresults = targetim.photometry[psfmodelname].photresults
 
+    # targetim.photometry.convert_fluxes_to_mags()
+    return targetim.photometry
 
     # TODO : extract flux and error from aper and psf photometry!!
     #psfflux =psfphotresults['']
