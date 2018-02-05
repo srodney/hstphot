@@ -408,7 +408,8 @@ def doastropyphot(targetimfilename, xy, psfimfilename=None,
         targetim.dopsfphot(psfmodelname, fitpix=fitpix, apradpix=apradpix)
         # psfphotresults = targetim.photometry[psfmodelname].photresults
 
-    # targetim.photometry.convert_fluxes_to_mags()
+    targetim.photometry['aperturephot'].convert_fluxes_to_mags(
+        targetim.zpt, targetim.camera, targetim.filter)
     return targetim.photometry
 
     # TODO : extract flux and error from aper and psf photometry!!

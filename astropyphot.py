@@ -53,51 +53,72 @@ class Photometry(object):
         self.photobject = None
         self.psfmodel = None
         self.photresults = None
+        self.mag_ap = []
+        self.magerr_ap = []
+        self.apradius = []
+        self.flux_ap = []
+        self.flux_ap_precor = []
+        self.apcor = []
 
-
-    def convert_fluxes_to_mags(self, zpt, camera, photsys='AB'):
+    def convert_fluxes_to_mags(self, zpt, camera, filtername):
         """Apply zero points and aperture corrections to convert the measured
-        fluxes into magnitudes
-        :param photsys:  'AB' or 'Vega';  the magnitude system to use
+        fluxes into magnitudes.
+        :param zpt: zero point magnitude
+        :param camera: HST camera name (e.g. 'WFC3-IR')
+        :param filtername: HST filter name (e.g. 'F125W')
         """
+        if 'aperture_sum_0' in self.photresults.colnames:
+            # This is a table of aperture photometry.
+            # Extract the measured fluxes from the aperture photometry table
+            apidlist = np.array([int(k.split('_')[-1])
+                                 for k in self.photresults.colnames
+                                 if k.startswith('aperture_sum')])
+            apflux_raw = np.array(
+                [self.photresults[
+                     'aperture_sum_{:d}'.format(apidlist[i])].data[0]
+                 for i in apidlist])
+            apradius = np.array([
+                self.photresults[
+                    'radius_arcsec_{:d}'.format(apidlist[i])].data[0]
+                for i in apidlist])
 
-        if 'aperturephot' in self.photresults:
-            # extract the measured fluxes from the aperture photometry table
-            apphot_table = self.photresults['aperturephot']
-            apidlist = [int(k.split('_')[-1])
-                        for k in apphot_table
-                        if k.startswith('aperture_sum')]
-            apflux = [apphot_table['aperture_sum_{:d}'.format(apidlist[i])]
-                      for i in apidlist]
-            apradius = [apphot_table['radius_arcsec_{:d}'.format(apidlist[i])]
-                        for i in apidlist]
             # TODO: get flux uncertainties too!!
+            apfluxerr_raw = np.zeros(len(apflux_raw))
 
-            # get the aperture corrections
+            # get the aperture corrections and apply to the measured fluxes
             if camera == 'WFC3-IR':
                 apcor, aperr = hstzpt_apcorr.apcorrWFC3IR(filtername, apradius)
             elif camera == 'WFC3-UVIS':
                 apcor, aperr = hstzpt_apcorr.apcorrWFC3UVIS(filtername, apradius)
             elif camera == 'ACS-WFC':
                 apcor, aperr = hstzpt_apcorr.apcorrACSWFC(filtername, apradius)
+            else:
+                raise RuntimeWarning(
+                    "No aperture correction defined for "
+                    " camera {}".format(camera))
+            fluxcor = 10**(0.4*apcor)
+            apflux = apflux_raw * fluxcor
+            #  Systematic err from aperture correction :
+            ferrap = 0.4 * np.log(10) * apflux * aperr
+            apfluxerr = np.sqrt(apfluxerr_raw ** 2 + ferrap ** 2) # total err
 
-
-            # TODO: mark that the aperture correction has been applied.
-
-
-        apflux = None
-        apfluxerr = None
-        aparcsec = None
-        zeropoint = None
-        image = self.imfilename
-        photsys = photsys
-        camera = None
-        filtername = None
-
-        # Define aperture corrections for each aperture
-        apcor = np.zeros(len(aparcsec))
-        aperr = np.zeros(len(aparcsec))
-
+            # Convert flux to magnitudes
+            self.mag_ap = []
+            self.magerr_ap = []
+            for i in range(len(apidlist)):
+                if apflux[i] <= 0:
+                    mag = -2.5 * np.log10(3 * abs(apfluxerr[i])) \
+                          + zpt - apcor[i]
+                    magerr = -9.0
+                else:
+                    mag = -2.5 * np.log10(apflux[i]) + zpt
+                    magerr = 1.0857 * apfluxerr[i] / apflux[i]
+                self.mag_ap.append(mag)
+                self.magerr_ap.append(magerr)
+            self.apradius = apradius
+            self.flux_ap = apflux
+            self.flux_ap_precor = apflux_raw
+            self.apcor = apcor
 
 
 class TargetImage(object):

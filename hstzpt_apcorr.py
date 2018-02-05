@@ -208,6 +208,8 @@ def apcorrWFC3UVIS( filt, aprad_arcsec ) :
     # central filter wavelength, in um, for WFC3-UVIS filter names
     if filt.lower() == 'f350lp' : filt='600' # fudge for long-pass F350LP
     filtwave = int(filt.strip( ascii_letters + punctuation ))  / 1000.
+    if np.iterable(aprad_arcsec) and not np.iterable(filtwave):
+        filtwave = [filtwave for i in range(len(aprad_arcsec))]
 
     # wavelengths and aperture sizes (in arcsec) for the x and y
     # dimensions of the WFC3-UVIS encircled energy table, respectively
@@ -263,6 +265,8 @@ def apcorrWFC3IR( filt, aprad_arcsec, eetable='default'):
 
     # central filter wavelength, um, for WFC3-IR filter names
     filtwave = int(filt.strip( ascii_letters+punctuation ))  / 100.
+    if np.iterable(aprad_arcsec) and not np.iterable(filtwave):
+        filtwave = np.array([filtwave for i in range(len(aprad_arcsec))])
 
     if eetable == 'default':
         # Derived from measurements of drizzled HST images in broadband
@@ -338,41 +342,58 @@ def apcorrWFC3IR( filt, aprad_arcsec, eetable='default'):
     elif eetable == 'stsci':
         # wavelengths and aperture sizes (in arcsec) for the x and y
         # dimensions of the WFC3-IR encircled energy table, respectively
-        wl = [ 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7 ]
-        ap = [ 0.0, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50, 0.60, 0.80, 1.0, 1.5, 2.0, 5.5 ]
+        wl = [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7]
+        ap = [0.0, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50, 0.60, 0.80,
+              1.0, 1.5, 2.0, 5.5]
 
         # The encircled energy table, from
         # http://www.stsci.edu/hst/wfc3/documents/handbooks/currentIHB/c07_ir07.html#401707
         # http://www.stsci.edu/hst/wfc3/phot_zp_lbn
-        ee = np.array( [
-        [ 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000 ],
-        [ 0.575, 0.549, 0.524, 0.502, 0.484, 0.468, 0.453, 0.438, 0.426, 0.410, 0.394 ],
-        [ 0.736, 0.714, 0.685, 0.653, 0.623, 0.596, 0.575, 0.558, 0.550, 0.539, 0.531 ],
-        [ 0.802, 0.794, 0.780, 0.762, 0.739, 0.712, 0.683, 0.653, 0.631, 0.608, 0.590 ],
-        [ 0.831, 0.827, 0.821, 0.813, 0.804, 0.792, 0.776, 0.756, 0.735, 0.708, 0.679 ],
-        [ 0.850, 0.845, 0.838, 0.833, 0.828, 0.822, 0.816, 0.808, 0.803, 0.789, 0.770 ],
-        [ 0.878, 0.876, 0.869, 0.859, 0.850, 0.845, 0.841, 0.838, 0.840, 0.836, 0.832 ],
-        [ 0.899, 0.894, 0.889, 0.884, 0.878, 0.868, 0.858, 0.852, 0.854, 0.850, 0.848 ],
-        [ 0.916, 0.913, 0.904, 0.897, 0.893, 0.889, 0.883, 0.875, 0.870, 0.863, 0.859 ],
-        [ 0.937, 0.936, 0.929, 0.924, 0.918, 0.909, 0.903, 0.900, 0.903, 0.900, 0.895 ],
-        [ 0.951, 0.951, 0.946, 0.941, 0.935, 0.930, 0.925, 0.920, 0.917, 0.912, 0.909 ],
-        [ 0.967, 0.969, 0.967, 0.965, 0.963, 0.959, 0.954, 0.951, 0.952, 0.948, 0.943 ],
-        [ 0.974, 0.977, 0.976, 0.975, 0.973, 0.972, 0.969, 0.967, 0.970, 0.967, 0.963 ],
-        [ 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000 ],
-        ] )
+        ee = np.array([
+            [0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
+             0.000, 0.000],
+            [0.575, 0.549, 0.524, 0.502, 0.484, 0.468, 0.453, 0.438, 0.426,
+             0.410, 0.394],
+            [0.736, 0.714, 0.685, 0.653, 0.623, 0.596, 0.575, 0.558, 0.550,
+             0.539, 0.531],
+            [0.802, 0.794, 0.780, 0.762, 0.739, 0.712, 0.683, 0.653, 0.631,
+             0.608, 0.590],
+            [0.831, 0.827, 0.821, 0.813, 0.804, 0.792, 0.776, 0.756, 0.735,
+             0.708, 0.679],
+            [0.850, 0.845, 0.838, 0.833, 0.828, 0.822, 0.816, 0.808, 0.803,
+             0.789, 0.770],
+            [0.878, 0.876, 0.869, 0.859, 0.850, 0.845, 0.841, 0.838, 0.840,
+             0.836, 0.832],
+            [0.899, 0.894, 0.889, 0.884, 0.878, 0.868, 0.858, 0.852, 0.854,
+             0.850, 0.848],
+            [0.916, 0.913, 0.904, 0.897, 0.893, 0.889, 0.883, 0.875, 0.870,
+             0.863, 0.859],
+            [0.937, 0.936, 0.929, 0.924, 0.918, 0.909, 0.903, 0.900, 0.903,
+             0.900, 0.895],
+            [0.951, 0.951, 0.946, 0.941, 0.935, 0.930, 0.925, 0.920, 0.917,
+             0.912, 0.909],
+            [0.967, 0.969, 0.967, 0.965, 0.963, 0.959, 0.954, 0.951, 0.952,
+             0.948, 0.943],
+            [0.974, 0.977, 0.976, 0.975, 0.973, 0.972, 0.969, 0.967, 0.970,
+             0.967, 0.963],
+            [1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000,
+             1.000, 1.000],
+        ])
     else:
         wl, ap, ee = read_eetable(eetable)
 
     ee_interp = scint.interp2d(wl, ap, ee, kind='linear',
                                bounds_error=False, fill_value=1.0)
-    EEfrac_ap = ee_interp(filtwave, aprad_arcsec).reshape(np.shape(aprad_arcsec))
-    apcor = -2.5 * np.log10(EEfrac_ap) # correction relative to infinite aperture
+    EEfrac_ap = ee_interp(filtwave, aprad_arcsec)[:, 0]
 
-    if np.iterable( apcor ) :
+    # magnitude to add to measured mag, to correct to an infinite aperture
+    apcor = -2.5 * np.log10(EEfrac_ap)
+
+    if np.iterable(apcor):
         aperr = 0.005*np.ones(len(apcor))
-    else :
+    else:
         aperr = 0.005
-    return( np.round(apcor,3), aperr )
+    return np.round(apcor, 3), aperr
 
 
 # The following has some data and aperture correction definitions derived
