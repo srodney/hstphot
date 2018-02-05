@@ -312,7 +312,7 @@ def getheader(fitsfile, ext=None):
     return hdr
 
 
-def get_header_and_data(image, ext=None):
+def getheaderanddata(image, ext=None):
     """ Return a fits image header and data array.
 
     :param image: a string giving a fits filename, a pyfits hdulist or hdu,
@@ -563,7 +563,7 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
         import pdb
         pdb.set_trace()
 
-    imhdr, imdat = get_header_and_data(image, ext=ext)
+    imhdr, imdat = getheaderanddata(image, ext=ext)
     if imfilename is None:
         if isinstance(image, str):
             imfilename = image
