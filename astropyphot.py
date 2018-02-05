@@ -11,7 +11,11 @@ from photutils.detection import IRAFStarFinder
 from photutils.psf import IntegratedGaussianPRF, DAOGroup
 from photutils.psf import IterativelySubtractedPSFPhotometry, BasicPSFPhotometry
 from photutils.background import MMMBackground, MADStdBackgroundRMS
+from photutils.aperture import (CircularAperture, CircularAnnulus,
+                                aperture_photometry)
 from astropy.modeling.fitting import LevMarLSQFitter
+import exceptions
+from astropy.table import Column
 from astropy.stats import gaussian_sigma_to_fwhm, gaussian_fwhm_to_sigma
 
 _HST_WFC3_PSF_FWHM_ARCSEC = 0.14  # FWHM of the HST WFC3IR PSF in arcsec
@@ -43,9 +47,9 @@ class Photometry(object):
 
     def __init__(self, name):
         self.name = name
-        self.psfphotobject = None
+        self.photobject = None
         self.psfmodel = None
-        self.psfphotresults = None
+        self.photresults = None
 
 
 class TargetImage(object):
@@ -67,6 +71,11 @@ class TargetImage(object):
         self.x_0 = None
         self.y_0 = None
         self.flux_0 = None
+
+        # Sky annulus
+        self.skyxy = None
+        self.skyannpix = None
+        self.skyvalperpix = None
 
         # Dictionary of Photometry objects. Each entry will hold a PSF model,
         # photometry object, and phot results table. Keyed with
@@ -130,10 +139,22 @@ class TargetImage(object):
             psfimfilename, self.pixscale, **kwargs)
 
 
-    def dophot(self, modelname, fitpix=11, apradpix=3,
-               **kwargs):
+    def dopsfphot(self, modelname, fitpix=11, apradpix=3,
+                  **kwargs):
         """Do photometry of the target: 
         set up a photometry object, do the photometry and store the results.
+        fitpix : int or length-2 array-like
+          Rectangular shape around the center of a star which will be used
+          to collect the data to do the fitting. Can be an integer to be
+          the same along both axes. E.g., 5 is the same as (5, 5), which
+          means to fit only at the following relative pixel positions:
+          [-2, -1, 0, 1, 2].  Each element of ``fitshape`` must be an odd
+          number.
+        apradpix : float or None
+          The radius (in units of pixels) used to compute initial
+          estimates for the fluxes of sources. If ``None``, one FWHM will
+          be used if it can be determined from the ```psf_model``.
+        
         """
         if modelname not in self.photometry:
             print("Model {} not loaded. Use load_psfmodel()".format(modelname))
@@ -144,13 +165,71 @@ class TargetImage(object):
         hstphotobject = BasicPSFPhotometry(
             psf_model=hstpsfmodel.psfmodel, group_maker=hstpsfmodel.grouper,
             bkg_estimator=hstpsfmodel.bkg_estimator,
-            fitter=hstpsfmodel.fitter, fitshape=(fitpix, fitpix),
+            fitter=hstpsfmodel.fitter, fitshape=fitpix,
             aperture_radius=apradpix)
-        self.photometry[modelname].psfphotobject = hstphotobject
+        self.photometry[modelname].photobject = hstphotobject
 
         phot_results_table = hstphotobject.do_photometry(
             image=self.imdat, init_guesses=self.target_table)
-        self.photometry[modelname].psfphotresults = phot_results_table
+        self.photometry[modelname].photresults = phot_results_table
+
+
+    def get_sky_from_annulus(self, r_in=3, r_out=5, units='arcsec'):
+        """ Measure the sky flux with aperture photometry in an annulus.
+        :param r_in, r_out: float
+            inner, outer radius of the sky annulus
+        :param units: 'arcsec' or 'pixels'
+           units for the radii. 
+        :return: skyval : the measured average sky brightness per pixel.
+        """
+        self.skyxy = [self.x_0, self.y_0]
+        if units.lower()=='arcsec':
+            r_in = r_in / self.pixscale
+            r_out = r_out / self.pixscale
+        elif not units.lower().startswith('pix'):
+            raise exceptions.RuntimeError
+
+        skyannulus = CircularAnnulus(self.skyxy, r_in=r_in, r_out=r_out)
+        phot_table = aperture_photometry(
+            self.imdat, skyannulus, error=None, mask=None,
+            method=u'exact', subpixels=5, unit=None, wcs=None)
+        skyvaltot = phot_table['aperture_sum']
+
+        self.skyannpix = [r_in, r_out]
+        self.skyvalperpix = skyvaltot / skyannulus.area()
+
+        # TODO: compute the error properly
+        self.skyerr = 0.0
+        return
+
+    def doapphot(self, apradlist, units='arcsec'):
+        """ Measure the flux in one ore more apertures.
+        :param apradlist: float or array-like
+           aperture radius or list of radii.  
+        :param units: 'arcsec' or 'pixels'; 
+           the units for the aperture radii in apradlist.
+        """
+        if not np.iterable(apradlist):
+            apradlist = [apradlist]
+        if units == 'arcsec':
+            apradlist = [ap / self.pixscale for ap in apradlist]
+        if self.skyvalperpix is None:
+            self.get_sky_from_annulus()
+
+        xy = [self.x_0, self.y_0]
+        apertures = [CircularAperture(xy, r) for r in apradlist]
+        phot_table = aperture_photometry(
+            self.imdat, apertures, error=None, mask=None,
+            method=u'exact', subpixels=5, unit=None, wcs=None)
+
+        for i in range(len(apertures)):
+            colname = 'aprad_arcsec_{:d}'.format(i)
+            apradarcsec = apradlist[i] * self.pixscale
+            apcol = Column(name=colname, data=[apradarcsec,])
+            phot_table.add_column(apcol)
+
+        self.photometry['aperturephot'] = Photometry('aperturephot')
+        self.photometry['aperturephot'].photresults = phot_table
 
 
     def plot_resid_image(self, modelname, Npix=15):
@@ -166,13 +245,13 @@ class TargetImage(object):
                   " and then dophot() to run photometry.".format(modelname))
             return
         photinstance = self.photometry[modelname]
-        if photinstance.psfphotresults is None:
+        if photinstance.photresults is None:
             print("No phot results for model {}. "
                   " Use dophot()".format(modelname))
             return
 
         psfmodel = self.photometry[modelname].psfmodel
-        results_table = self.photometry[modelname].psfphotresults
+        results_table = self.photometry[modelname].photresults
         targetimdat = self.imdat
 
         # TODO : read these from the results table?
@@ -194,7 +273,7 @@ class TargetImage(object):
                                   np.arange(len(targetimdat)))
         parameters_to_set = {'x_fit': 'x_0', 'y_fit': 'y_0', 'flux_fit': 'flux'}
 
-        photobject = self.photometry[modelname].psfphotobject
+        photobject = self.photometry[modelname].photobject
         groupmodel = photutils.psf.models.get_grouped_psf_model(
             photobject.psf_model, results_table, parameters_to_set)
         psf_image = groupmodel(gridindices[0], gridindices[1])

@@ -462,14 +462,17 @@ def getzptACS(image, system='Vega', ext=0):
     return zptim
 
 
-def get_flux_and_err(imagedat, psfmodel, xy, ntestpositions=100, psfradpix=3,
+def get_flux_and_err(targetimfilename, xy, psfimfilename=None,
+                     psfpixscale=None, recenter_target=True,
+                     apradarcsec=[0.1,0.2,0.3],
+                     ntestpositions=100, psfradpix=3,
                      apradpix=3, skyannpix=None, skyalgorithm='sigmaclipping',
-                     setskyval=None, recenter_target=True, recenter_fakes=True,
+                     setskyval=None, recenter_fakes=True,
                      exptime=1, exact=True, ronoise=1, phpadu=1, verbose=False,
                      debug=False):
     """ Measure the flux (and uncertainty?) using photutils.
     :param imagedat:
-    :param psfmodel:
+    :param model:
     :param xy:
     :param ntestpositions:
     :param psfradpix:
@@ -487,50 +490,33 @@ def get_flux_and_err(imagedat, psfmodel, xy, ntestpositions=100, psfradpix=3,
     :param debug:
     :return:
     """
-    from photutils import aperture_photometry, CircularAperture, CircularAnnulus
+    from . import astropyphot
+    from os import path
 
-    # Measure the Sky brightness!
-    if setskyval is not None:
-        sky = setskyval
-        skyerr = 0.0
-    elif np.iterable(skyannpix):
-        skyannulus = CircularAnnulus(xy, r_in=skyannpix[0], r_out=skyannpix[1])
-        phot_table = aperture_photometry(
-            imagedat, skyannulus, error=None, mask=None,
-            method=u'exact', subpixels=5, unit=None, wcs=None)
-        skyvaltot = phot_table['aperture_sum']
-        sky = skyvaltot / skyannulus.area()
-        skyerr = 0.0
+    targetim = astropyphot.TargetImage(targetimfilename)
+    if psfpixscale is None:
+        psfpixscale = targetim.pixscale
+    targetim.set_target(x_0=xy[0], y_0=xy[1], recenter=recenter_target)
+
+    targetim.doapphot(apradarcsec, units='arcsec')
+    apphotresults = targetim.photometry['aperturephot'].photresults
+
+    if psfimfilename is not None:
+        psfmodelname = path.basename(psfimfilename)
+        targetim.load_psfmodel(psfimfilename, psfmodelname,
+                               psfpixscale=psfpixscale)
+        targetim.dopsfphot()
+        psfphotresults = targetim.photometry[psfmodelname].photresults
+        return(apphotresults, psfphotresults)
     else:
-        sky = 0.0
-        skyerr = 0.0
+        return (apphotresults)
 
+    # TODO : extract flux and error from aper and psf photometry!!
+    #psfflux =psfphotresults['']
+    #psffluxerr = 0.0
 
-    if not np.iterable(apradpix):
-        apradpix = [apradpix]
-    apertures = [CircularAperture(xy, r) for r in apradpix]
-    phot_table = aperture_photometry(
-        imagedat, apertures, error=None,  mask=None,
-        method=u'exact', subpixels=5, unit=None, wcs=None)
-
-    apflux = []
-    if len(apertures) > 1:
-        for i in range(len(apradpix)):
-            flux = (phot_table['aperture_sum_%i' % i] -
-                    (sky * apertures[i].area()))
-            apflux.append(flux)
-    else:
-        flux = phot_table['aperture_sum'] - (sky * apertures[0].area())
-        apflux.append(flux)
-
-    # TODO : compute the errors!
-    apfluxerr = np.zeros(len(apflux))
-
-    # TODO : psf fitting photometry!!
-    psfflux = 0.0
-    psffluxerr = 0.0
-
-    return apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr
+    # return(apphotresults, psfphotresults)
+    # return apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr
 
 
 def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
@@ -650,21 +636,12 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
     else:
         xpy, ypy = xc, yc
 
-    output_PythonPhot = photfunctions.get_flux_and_err(
-        imdat, psfimage, [xpy, ypy],
-        psfradpix=psfradpix, apradpix=appix, ntestpositions=ntestpositions,
-        skyannpix=skyannpix, skyalgorithm=skyalgorithm, setskyval=skyval,
-        recenter_target=recenter, recenter_fakes=True, exact=exact,
-        exptime=exptime, ronoise=1, phpadu=phpadu,
-        showfit=showfit, verbose=verbose, debug=debug)
-    apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr = output_PythonPhot
-
     if photpackage == 'photutils':
         # the sky measurement algorithm in photutils is not quite the same as
         # in PythonPhot, so for now, we adopt the PythonPhot sky value instead
         # of letting photutils compute it.
-        if skyval is None:
-            skyval = sky
+        #if skyval is None:
+        #    skyval = sky
         output_photutils = get_flux_and_err(
             imdat, psfimage, [xpy, ypy],
             psfradpix=psfradpix, apradpix=appix, ntestpositions=ntestpositions,
@@ -674,6 +651,15 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
             debug=debug)
         apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr = output_photutils
 
+    elif photpackage == 'PythonPhot':
+        output_PythonPhot = photfunctions.get_flux_and_err(
+            imdat, psfimage, [xpy, ypy],
+            psfradpix=psfradpix, apradpix=appix, ntestpositions=ntestpositions,
+            skyannpix=skyannpix, skyalgorithm=skyalgorithm, setskyval=skyval,
+            recenter_target=recenter, recenter_fakes=True, exact=exact,
+            exptime=exptime, ronoise=1, phpadu=phpadu,
+            showfit=showfit, verbose=verbose, debug=debug)
+        apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr = output_PythonPhot
 
     if not np.iterable(apflux):
         apflux = np.array([apflux])
@@ -801,7 +787,7 @@ def main():
     parser.add_argument('--photpackage', type=str, default='PythonPhot',
                         choices=['PythonPhot', 'photutils'],
                         help="Underlying photometry package to use.")
-    parser.add_argument('--psfmodel', type=str, default=None,
+    parser.add_argument('--model', type=str, default=None,
                         help="Filename of a psf model fits file.")
     parser.add_argument('--ntest', type=int, default=None,
                         help='Number of test positions for fake sources.')
