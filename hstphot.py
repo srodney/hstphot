@@ -2,6 +2,7 @@
 # 2014.06.29  S.Rodney
 __author__ = 'rodney'
 
+import hstzpt_apcorr
 import sys
 import numpy as np
 if sys.version_info <= (3,0):
@@ -105,8 +106,6 @@ def xy2radec(imfile_or_hdr, x, y, ext=0):
     return ra, dec
 
 
-
-
 def getxycenter(image, x, y, ext=0, radec=False,
                 fitsconvention=False, verbose=False):
     """ Use a gaussian centroid algorithm to locate the center of a star
@@ -131,7 +130,7 @@ def getxycenter(image, x, y, ext=0, radec=False,
     if radec:
         x, y = radec2xy(image, x, y, ext=ext)
     fwhmpix = getfwhmpix(image, ext=ext)
-    imdat = pyfits.getdata(image, ext=ext)
+    imhdr, imdat = getheaderanddata(image, ext=ext)
     if fitsconvention:
         x, y = x - 1, y - 1
     xc, yc = cntrd.cntrd(imdat, x, y, fwhmpix, verbose=verbose)
@@ -352,135 +351,34 @@ def getheaderanddata(image, ext=None):
     return hdr, data
 
 
-
-
-
-# Average flux of vega through an infinite aperture for ACS filters :
-FLUX_VEGA_ACS_WFC_INF = {'F435W': 6.384e-09, 'F475W': 5.290e-09,
-                         'F502N': 4.660e-09,
-                         'F550M': 3.416e-09, 'F555W': 3.811e-09,
-                         'F606W': 2.869e-09,
-                         'F625W': 2.351e-09, 'F658N': 1.776e-09,
-                         'F660N': 1.932e-09,
-                         'F775W': 1.287e-09, 'F814W': 1.134e-09,
-                         'F850LP': 8.261e-10,
-                         'F892N': 8.729e-10}
-
-# Here are the infinite aperture Vegamag zeropoints
-ZPT_WFC3_IR_VEGA = {'F105W': 25.6236, 'F110W': 26.0628, 'F125W': 25.3293,
-                    'F140W': 25.3761, 'F160W': 24.6949, 'F098M': 25.1057,
-                    'F127M': 23.6799, 'F139M': 23.4006, 'F153M': 23.2098,
-                    'F126N': 21.9396, 'F128N': 21.9355, 'F130N': 22.0138,
-                    'F132N': 21.9499, 'F164N': 21.5239, 'F167N': 21.5948}
-
-ZPT_WFC3_UVIS_VEGA = {'F200LP': 26.8902, 'F300X': 23.5363, 'F350LP': 26.7874,
-                      'F475X': 26.2082, 'F850LP': 25.5505, 'F600LP': 23.3130,
-                      'F218W': 21.2743, 'F225W': 22.3808, 'F275W': 22.6322,
-                      'F336W': 23.4836, 'F390W': 25.1413, 'F438W': 24.9738,
-                      'F475W': 25.7783, 'F555W': 25.8160, 'F606W': 25.9866,
-                      'F625W': 25.3783, 'F775W': 24.4747, 'F814W': 24.6803,
-                      'F390M': 23.5377, 'F410M': 23.7531, 'FQ422M': 22.9611,
-                      'F467M': 23.8362, 'F547M': 24.7477, 'F621M': 24.4539,
-                      'F689M': 24.1873, 'F763M': 23.8283, 'F845M': 23.2809}
-
-
-def getzpt(image, system='Vega', ext=0):
-    """ Define the zero point for the given image in the photometric system
-    specified ("Vega", 'AB', "STMAG").
-
-    :param image: any valid input to getheader(), namely:
-      a string giving a fits filename, a pyfits hdulist or hdu, a pyfits
-      header object, a tuple or list giving [hdr,data]
-    :param system :  photometry system to use ('AB','Vega')
-
-    :return: float zeropoint magnitude
-    """
-    header = getheader(image, ext=ext)
-    filt = getfilter(header)
-    camera = getcamera(header)
-    if camera == 'ACS-WFC':
-        # For ACS the zero point varies with time, so we interpolate
-        # from a fixed table for either AB or Vega.
-        ZEROPOINT = getzptACS(header, system=system)
-    elif system.lower().startswith('ab'):
-        # For AB mags, assuming the data are retreived from the archive
-        # after 2012, we can use the header keywords to get the best zeropoint
-        if ('PHOTPLAM' in header) and ('PHOTFLAM' in header):
-            PHOTPLAM = header['PHOTPLAM']
-            PHOTFLAM = header['PHOTFLAM']
-        ZEROPOINT = -2.5 * np.log10(PHOTFLAM) - 5 * np.log10(PHOTPLAM) - 2.408
-    elif system.lower().startswith('vega'):
-        # For WFC3, the Vega zeropoint is read from a fixed table
-        if camera == 'WFC3-UVIS':
-            ZEROPOINT = ZPT_WFC3_UVIS_VEGA[filt]
-        elif camera == 'WFC3-IR':
-            ZEROPOINT = ZPT_WFC3_IR_VEGA[filt]
-    return ZEROPOINT
-
-
-def getzptACS(image, system='Vega', ext=0):
-    """ Determine the ACS zeropoint for the given image by interpolating over
-    a table of zeropoints. System may be 'Vega', 'ST', or 'AB'.
-
-    :param image: any valid input to getheader(), namely:
-      a string giving a fits filename, a pyfits hdulist or hdu, a pyfits
-      header object, a tuple or list giving [hdr,data]
-    :param system :  photometry system to use ('AB','Vega','STMAG')
-
-    :return: float zeropoint magnitude
-
-    """
-    import os
-    from astropy.io import ascii
-    from scipy import interpolate as scint
-
-    hdr = getheader(image, ext=ext)
-    filtim = getfilter(hdr)
-    mjdim = hdr['EXPSTART']
-
-    thisfile = sys.argv[0]
-    if 'ipython' in thisfile:
-        thisfile = __file__
-    thisdir = os.path.dirname(thisfile)
-    acszptdatfile = os.path.join(thisdir, 'acs_wfc_zpt.dat')
-    zptdat = ascii.read(acszptdatfile, format='commented_header',
-                        header_start=-1, data_start=0)
-    ifilt = np.where(zptdat['FILTER'] == filtim)
-    if system.lower().startswith('vega'):
-        zpt = zptdat['VEGAMAG'][ifilt]
-    elif system.lower().startswith('st'):
-        zpt = zptdat['STMAG'][ifilt]
-    elif system.lower().startswith('ab'):
-        zpt = zptdat['ABMAG'][ifilt]
-    else:
-        raise exceptions.RuntimeError(
-            "Magnitude system %s not recognized" % system)
-    mjd = zptdat['MJD'][ifilt]
-    zptinterp = scint.interp1d(mjd, zpt, bounds_error=True)
-    zptim = zptinterp(mjdim)
-
-    return zptim
-
-
-def get_flux_and_err(targetimfilename, xy, psfimfilename=None,
+def doastropyphot(targetimfilename, xy, psfimfilename=None,
                      psfpixscale=None, recenter_target=True,
-                     apradarcsec=[0.1,0.2,0.3],
+                     apradarcsec=[0.1,0.2,0.3], skyannradarcsec=[3.0,5.0],
                      ntestpositions=100, psfradpix=3,
                      apradpix=3, skyannpix=None, skyalgorithm='sigmaclipping',
                      setskyval=None, recenter_fakes=True,
                      exptime=1, exact=True, ronoise=1, phpadu=1, verbose=False,
                      debug=False):
-    """ Measure the flux (and uncertainty?) using photutils.
-    :param imagedat:
-    :param model:
+    """ Measure the flux (and uncertainty?) using the astropy-affiliated
+    photutils package.
+
+    :param targetimfilename: name of the .fits image file with the target (the
+      star to be photometered).
     :param xy:
+    :param psfimfilename: name of the .fits image file with the PSF image (the
+      star that defines a PSF model to be fit to the target)
+    :param psfpixscale: Pixel scale of the PSF star (necessary if header of the
+      PSF star image does not provide WCS keywords that define the pixel scale)
+    :param recenter_target: boolean;  Use a centroiding algorithm to locate the
+      center of the target star. Set to 'False' for "forced photometry"
+    :param apradpix: list of aperture radii in arcsec, for aperture photometry
+    :param skyannradarcsec: inner and outer radii in arcsec for the sky annulus
+      (the annulus in which the sky is measured)
+
     :param ntestpositions:
     :param psfradpix:
-    :param apradpix:
-    :param skyannpix:
     :param skyalgorithm:
     :param setskyval:
-    :param recenter_target:
     :param recenter_fakes:
     :param exptime:
     :param exact:
@@ -511,25 +409,41 @@ def get_flux_and_err(targetimfilename, xy, psfimfilename=None,
     else:
         return (apphotresults)
 
+
     # TODO : extract flux and error from aper and psf photometry!!
     #psfflux =psfphotresults['']
     #psffluxerr = 0.0
 
+    # TODO : convert astropyphot results into a string for printing
     # return(apphotresults, psfphotresults)
     # return apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr
 
+    # the sky measurement algorithm in photutils is not quite the same as
+    # in PythonPhot, so for now, we adopt the PythonPhot sky value instead
+    # of letting photutils compute it.
+    #if skyval is None:
+    #    skyval = sky
+    # output_photutils = astropyphot.get(
+    #     imdat, psfimage, [xpy, ypy],
+    #     psfradpix=psfradpix, apradpix=appix, ntestpositions=ntestpositions,
+    #     skyannpix=skyannpix, skyalgorithm=skyalgorithm, setskyval=skyval,
+    #     recenter_target=recenter, recenter_fakes=True, exact=exact,
+    #     exptime=exptime, ronoise=1, phpadu=phpadu, verbose=verbose,
+    #     debug=debug)
+    # apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr = output_photutils
 
-def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
-           psfimage=None, psfradpix=3, photpackage='PythonPhot',
-           recenter=False, imfilename=None,
-           ntestpositions=100, snthresh=0.0, zeropoint=None,
-           filtername=None, exptime=None, pixscale=None,
-           skyannarcsec=[6.0, 12.0], skyval=None, skyalgorithm='sigmaclipping',
-           target=None, printstyle=None, exact=True, fitsconvention=True,
-           phpadu=None, returnflux=False, showfit=False,
-           verbose=False, debug=False):
-    """ Measure the flux through aperture(s) and/or psf fitting and report
-    observed fluxes and magnitudes.
+
+def dopythonphot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
+                 psfimage=None, psfradpix=3, recenter=False, imfilename=None,
+                 ntestpositions=100, snthresh=0.0, zeropoint=None,
+                 filtername=None, exptime=None, pixscale=None,
+                 skyannarcsec=[6.0, 12.0], skyval=None,
+                 skyalgorithm='sigmaclipping',
+                 target=None, printstyle=None, exact=True, fitsconvention=True,
+                 phpadu=None, returnflux=False, showfit=False,
+                 verbose=False, debug=False):
+    """ Measure the flux through aperture(s) and/or psf fitting using the
+    PythonPhot package.
 
     Inputs:
       image :  string giving image file name OR a list or 2-tuple giving
@@ -557,7 +471,6 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
        given pixel position)
     """
     from PythonPhot import photfunctions
-    import hstapcorr
 
     if debug == 1:
         import pdb
@@ -599,8 +512,9 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
 
     appix = np.array([ap / pixscale for ap in aparcsec])
     skyannpix = np.array([skyrad / pixscale for skyrad in skyannarcsec])
-    assert skyannpix[0] >= np.max(
-        appix), "Sky annulus must be >= largest aperture."
+    if len(appix) >= 1:
+        assert skyannpix[0] >= np.max(
+            appix), "Sky annulus must be >= largest aperture."
     camera = getcamera(imhdr)
 
     # Define the conversion factor from the values in this image
@@ -618,56 +532,50 @@ def dophot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
         assert (
             phpadu is not None), "Can't determine units from the image header."
 
-    if zeropoint is not None:
-        zpt = zeropoint
-        apcor = np.zeros(len(aparcsec))
-        aperr = np.zeros(len(aparcsec))
-    else:
-        zpt = getzpt(image, system=system)
-        if camera == 'WFC3-IR':
-            apcor, aperr = hstapcorr.apcorrWFC3IR(filtername, aparcsec)
-        elif camera == 'WFC3-UVIS':
-            apcor, aperr = hstapcorr.apcorrWFC3UVIS(filtername, aparcsec)
-        elif camera == 'ACS-WFC':
-            apcor, aperr = hstapcorr.apcorrACSWFC(filtername, aparcsec)
-
     if fitsconvention:
         xpy, ypy = xc - 1, yc - 1
     else:
         xpy, ypy = xc, yc
 
-    if photpackage == 'photutils':
-        # the sky measurement algorithm in photutils is not quite the same as
-        # in PythonPhot, so for now, we adopt the PythonPhot sky value instead
-        # of letting photutils compute it.
-        #if skyval is None:
-        #    skyval = sky
-        output_photutils = get_flux_and_err(
-            imdat, psfimage, [xpy, ypy],
-            psfradpix=psfradpix, apradpix=appix, ntestpositions=ntestpositions,
-            skyannpix=skyannpix, skyalgorithm=skyalgorithm, setskyval=skyval,
-            recenter_target=recenter, recenter_fakes=True, exact=exact,
-            exptime=exptime, ronoise=1, phpadu=phpadu, verbose=verbose,
-            debug=debug)
-        apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr = output_photutils
+    if recenter:
+        xim, yim = getxycenter([imhdr, imdat], xc, yc,
+                               fitsconvention=True, radec=False,
+                               verbose=verbose)
+        if verbose:
+            print("Recentered position (x,y) : %.2f %.2f" % (xim, yim))
+            ra, dec = xy2radec(imhdr, xim, yim)
+            print("Recentered position (ra,dec) : %.6f %.6f" % (ra, dec))
 
-    elif photpackage == 'PythonPhot':
-        output_PythonPhot = photfunctions.get_flux_and_err(
-            imdat, psfimage, [xpy, ypy],
-            psfradpix=psfradpix, apradpix=appix, ntestpositions=ntestpositions,
-            skyannpix=skyannpix, skyalgorithm=skyalgorithm, setskyval=skyval,
-            recenter_target=recenter, recenter_fakes=True, exact=exact,
-            exptime=exptime, ronoise=1, phpadu=phpadu,
-            showfit=showfit, verbose=verbose, debug=debug)
-        apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr = output_PythonPhot
+    output_PythonPhot = photfunctions.get_flux_and_err(
+        imdat, psfimage, [xpy, ypy],
+        psfradpix=psfradpix, apradpix=appix, ntestpositions=ntestpositions,
+        skyannpix=skyannpix, skyalgorithm=skyalgorithm, setskyval=skyval,
+        recenter_target=False, recenter_fakes=True, exact=exact,
+        exptime=exptime, ronoise=1, phpadu=phpadu,
+        showfit=showfit, verbose=verbose, debug=debug)
+    apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr = output_PythonPhot
 
     if not np.iterable(apflux):
         apflux = np.array([apflux])
         apfluxerr = np.array([apfluxerr])
 
+    # Define aperture corrections for each aperture
+    if zeropoint is not None:
+        zpt = zeropoint
+        apcor = np.zeros(len(aparcsec))
+        aperr = np.zeros(len(aparcsec))
+    else:
+        zpt = hstzpt_apcorr.getzpt(image, system=system)
+        if camera == 'WFC3-IR':
+            # TODO: allow user to choose an alternate EE table?
+            apcor, aperr = hstzpt_apcorr.apcorrWFC3IR(filtername, aparcsec)
+        elif camera == 'WFC3-UVIS':
+            apcor, aperr = hstzpt_apcorr.apcorrWFC3UVIS(filtername, aparcsec)
+        elif camera == 'ACS-WFC':
+            apcor, aperr = hstzpt_apcorr.apcorrACSWFC(filtername, aparcsec)
+
+    # record the psf flux as a final infinite aperture for printing purposes
     if psfimage is not None:
-        # record the psf flux as a final infinite aperture for printing
-        # purposes:
         aparcsec = np.append(aparcsec, np.inf)
         apflux = np.append(apflux, [psfflux])
         apfluxerr = np.append(apfluxerr, [psffluxerr])
@@ -777,8 +685,9 @@ def main():
     from astropy.io import fits as pyfits
 
     parser = argparse.ArgumentParser(
-        description='Measure aperture photometry on drizzled HST images.'
-                    ' using the PyIDLPhot routines.')
+        description='Measure aperture and/or PSF photometry on drizzled HST '
+                    ' images using either the PythonPhot routines or the '
+                    'astropy-affiliated photutils package.')
 
     # Required positional argument
     parser.add_argument('image', help='Drizzled HST image fits file.')
@@ -787,9 +696,9 @@ def main():
     parser.add_argument('--photpackage', type=str, default='PythonPhot',
                         choices=['PythonPhot', 'photutils'],
                         help="Underlying photometry package to use.")
-    parser.add_argument('--model', type=str, default=None,
+    parser.add_argument('--psfmodel', type=str, default=None,
                         help="Filename of a psf model fits file.")
-    parser.add_argument('--ntest', type=int, default=None,
+    parser.add_argument('--ntest', type=int, default=100,
                         help='Number of test positions for fake sources.')
     parser.add_argument('--ext', type=int, default=None,
                         help='Specify the fits extension number. Required '
@@ -805,6 +714,7 @@ def main():
     parser.add_argument('--fast', action='store_true', default=False,
                         help='Compute sub-pixel areas approximately (Faster. '
                              'Safe for apertures much larger than a pixel.)')
+    # TODO: allow user to skip aperture photometry with PythonPhot
     parser.add_argument('--apertures', type=str, default='0.4',
                         help='Size of photometry aperture(s) in arcsec. ')
     parser.add_argument('--filtername', type=str, default=None,
@@ -850,6 +760,8 @@ def main():
     parser.add_argument('-d', dest='debug', action='count', default=0,
                         help='Turn up debugging depth (use -d,-dd,-ddd)')
 
+    # TODO: allow user to choose an alternate EE table?
+
     argv = parser.parse_args()
 
     # Allow the user to specify the fits extension number in brackets
@@ -876,41 +788,33 @@ def main():
     else:
         xim, yim = argv.x, argv.y
 
-    if not argv.forced:
-        xim, yim = getxycenter(argv.image, xim, yim, ext=argv.ext,
-                               fitsconvention=True, radec=False,
-                               verbose=argv.verbose)
-        if argv.verbose:
-            print("Recentered position (x,y) : %.2f %.2f" % (xim, yim))
-            ra, dec = xy2radec(argv.image, xim, yim, ext=argv.ext)
-            print("Recentered position (ra,dec) : %.6f %.6f" % (ra, dec))
-
     magsys = 'AB'
     if argv.vega:
         magsys = 'Vega'
     if argv.AB:
         magsys = 'AB'
 
-    aplist = np.array([float(ap) for ap in argv.apertures.split(',')])
+    if argv.apertures is not None:
+        aplist = np.array([float(ap) for ap in argv.apertures.split(',')])
+    else:
+        aplist = []
     skyannarcsec = [float(ap) for ap in argv.skyannulus.split(',')]
-    maglinelist = dophot(argv.image, xim, yim, aplist,
-                         psfimage=argv.psfmodel, ext=argv.ext,
-                         photpackage=argv.photpackage,
-                         skyannarcsec=skyannarcsec, skyval=argv.skyval,
-                         system=magsys, zeropoint=argv.zeropoint,
-                         filtername=argv.filtername, exptime=argv.exptime,
-                         pixscale=argv.pixscale,
-                         skyalgorithm=argv.skyalgorithm,
-                         snthresh=argv.snthresh,
-                         exact=(not argv.fast),
-                         ntestpositions=argv.ntest,
-                         recenter=False,  # recentering already done above
-                         printstyle=argv.printstyle, target=argv.target,
-                         phpadu=argv.phpadu, showfit=argv.showfit,
-                         verbose=argv.verbose,  debug=argv.debug)
-    for iap in range(len(maglinelist)):
-        print(maglinelist[iap].strip())
-
+    if argv.photpackage.lower() == 'pythonphot':
+        maglinelist = dopythonphot(
+            argv.image, xim, yim, aplist, system=magsys,
+            psfimage=argv.psfmodel, ext=argv.ext,
+            skyannarcsec=skyannarcsec, skyval=argv.skyval,
+            zeropoint=argv.zeropoint,
+            filtername=argv.filtername, exptime=argv.exptime,
+            pixscale=argv.pixscale, skyalgorithm=argv.skyalgorithm,
+            snthresh=argv.snthresh, exact=(not argv.fast),
+            ntestpositions=argv.ntest,
+            recenter=not argv.forced,
+            printstyle=argv.printstyle, target=argv.target,
+            phpadu=argv.phpadu, showfit=argv.showfit,
+            verbose=argv.verbose, debug=argv.debug)
+        for iap in range(len(maglinelist)):
+            print(maglinelist[iap].strip())
 
 if __name__ == '__main__':
     main()

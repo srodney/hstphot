@@ -18,6 +18,8 @@ import exceptions
 from astropy.table import Column
 from astropy.stats import gaussian_sigma_to_fwhm, gaussian_fwhm_to_sigma
 
+from . import hstzpt_apcorr
+
 _HST_WFC3_PSF_FWHM_ARCSEC = 0.14  # FWHM of the HST WFC3IR PSF in arcsec
 
 
@@ -50,6 +52,44 @@ class Photometry(object):
         self.photobject = None
         self.psfmodel = None
         self.photresults = None
+
+
+    def convert_fluxes_to_mags(self, photsys='AB'):
+        """Apply zero points and aperture corrections to convert the measured
+        fluxes into magnitudes
+        :param photsys:  'AB' or 'Vega';  the magnitude system to use
+        """
+        # TODO: extract from the photresults table for each aperture:
+        # TODO:  * the flux measurements
+        # TODO:  * the aperture radius
+        # TODO: then get the aperture correction and apply it
+        # TODO: mark that the aperture correction has been applied.
+        apflux = None
+        apfluxerr = None
+        aparcsec = None
+        zeropoint = None
+        image = self.imfilename
+        photsys = photsys
+        camera = None
+        filtername = None
+
+        if not np.iterable(apflux):
+            apflux = np.array([apflux])
+            apfluxerr = np.array([apfluxerr])
+
+        # Define aperture corrections for each aperture
+        if zeropoint is not None:
+            zpt = zeropoint
+            apcor = np.zeros(len(aparcsec))
+            aperr = np.zeros(len(aparcsec))
+        else:
+            zpt = hstzpt_apcorr.getzpt(image, system=photsys)
+            if camera == 'WFC3-IR':
+                apcor, aperr = hstzpt_apcorr.apcorrWFC3IR(filtername, aparcsec)
+            elif camera == 'WFC3-UVIS':
+                apcor, aperr = hstzpt_apcorr.apcorrWFC3UVIS(filtername, aparcsec)
+            elif camera == 'ACS-WFC':
+                apcor, aperr = hstzpt_apcorr.apcorrACSWFC(filtername, aparcsec)
 
 
 class TargetImage(object):

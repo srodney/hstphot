@@ -5,6 +5,7 @@
 # Energy tables or P330E photometry
 __author__ = 'srodney'
 
+import hstphot
 import os
 import sys
 import numpy as np
@@ -50,9 +51,9 @@ def getzpt(image, system='Vega', ext=0):
 
     :return: float zeropoint magnitude
     """
-    header = getheader(image, ext=ext)
-    filt = getfilter(header)
-    camera = getcamera(header)
+    header = hstphot.getheader(image, ext=ext)
+    filt = hstphot.getfilter(header)
+    camera = hstphot.getcamera(header)
     if camera == 'ACS-WFC':
         # For ACS the zero point varies with time, so we interpolate
         # from a fixed table for either AB or Vega.
