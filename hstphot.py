@@ -354,7 +354,7 @@ def getheaderanddata(image, ext=None):
 def doastropyphot(targetimfilename, xy, psfimfilename=None,
                   psfpixscale=None, recenter_target=True,
                   apradarcsec=[0.1,0.2,0.3], skyannradarcsec=[3.0,5.0],
-                  fitpix=11,
+                  fitpix=11, targetname='TARGET',
                   ntestpositions=100, psfradpix=3,
                   skyannpix=None, skyalgorithm='sigmaclipping',
                   setskyval=None, recenter_fakes=True,
@@ -395,10 +395,11 @@ def doastropyphot(targetimfilename, xy, psfimfilename=None,
     targetim = astropyphot.TargetImage(targetimfilename)
     if psfpixscale is None:
         psfpixscale = targetim.pixscale
-    targetim.set_target(x_0=xy[0], y_0=xy[1], recenter=recenter_target)
+    targetim.set_target(x_0=xy[0], y_0=xy[1], targetname=targetname,
+                        recenter=recenter_target)
 
     targetim.doapphot(apradarcsec, units='arcsec')
-    # apphotresults = targetim.photometry['aperturephot'].photresults
+    # apphotresults = targetim.photometry['aperturephot'].phot_table
 
     if psfimfilename is not None:
         psfmodelname = path.basename(psfimfilename)
@@ -406,11 +407,9 @@ def doastropyphot(targetimfilename, xy, psfimfilename=None,
                                psfpixscale=psfpixscale)
         apradpix = np.max([5, np.round(fitpix/2.)])
         targetim.dopsfphot(psfmodelname, fitpix=fitpix, apradpix=apradpix)
-        # psfphotresults = targetim.photometry[psfmodelname].photresults
+        # psfphotresults = targetim.photometry[psfmodelname].phot_table
 
-    targetim.photometry['aperturephot'].convert_fluxes_to_mags(
-        targetim.zpt, targetim.camera, targetim.filter)
-    return targetim.photometry
+    return targetim
 
     # TODO : extract flux and error from aper and psf photometry!!
     #psfflux =psfphotresults['']
@@ -642,7 +641,7 @@ def dopythonphot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
             print('# MJD     FILTER  APER      FLUX   FLUXERR       MAG     '
                   'MAGERR  MAGSYS    ZP       SKY   SKYERR')
 
-    if printstyle is not None :
+    if printstyle is not None:
         printstyle = printstyle.lower()
     ra, dec = 0, 0
     if (printstyle is not None and

@@ -72,10 +72,10 @@ class MeasuredPhotometry(object):
 
 
     @property
-    def napertures(self):
+    def nmeasurements(self):
         """Number of apertures measured"""
-        if self.phot_type=='psf':
-            return None
+        if self.phot_type == 'psf':
+            return 1
         if self.photresultstable is None:
             return None
         apertures = np.array([int(k.split('_')[-1])
@@ -92,7 +92,7 @@ class MeasuredPhotometry(object):
             return None
         apradii = np.array([self.photresultstable[
                                 'radius_arcsec_{:d}'.format(i)].data[0]
-                            for i in range(self.napertures)])
+                            for i in range(self.nmeasurements)])
         return apradii
 
 
@@ -115,7 +115,7 @@ class MeasuredPhotometry(object):
             # This is a table of aperture photometry.
             self.flux_raw = np.array(
                 [self.photresultstable['aperture_sum_{:d}'.format(iap)].data[0]
-                 for iap in range(self.napertures)])
+                 for iap in range(self.nmeasurements)])
 
             # TODO: get flux uncertainties too!!
             self.fluxerr_raw = np.zeros(len(self.flux_raw))
@@ -143,7 +143,7 @@ class MeasuredPhotometry(object):
             #  Systematic err from aperture correction :
             ferrap = 0.4 * np.log(10) * self.flux * aperr
             self.fluxerr = np.sqrt(self.fluxerr_raw ** 2 + ferrap ** 2)
-            nmeasurements = self.napertures
+            nmeasurements = self.nmeasurements
 
         else:
             # This is a table of PSF-fitting photometry measurements
@@ -160,6 +160,9 @@ class MeasuredPhotometry(object):
         if nmeasurements == 1:
             flux = [self.flux]
             fluxerr = [self.fluxerr]
+        else:
+            flux = self.flux
+            fluxerr = self.fluxerr
         for i in range(nmeasurements):
             if flux[i] <= 0:
                 m = -2.5 * np.log10(3 * abs(fluxerr[i])) + zpt
@@ -190,6 +193,7 @@ class TargetImage(object):
 
         # read in the target image and determine the pixel scale (arcsec/pix)
         imhdr, imdat = hstphot.getheaderanddata(imfilename, ext=ext)
+        self.filename = path.basename(imfilename)
         self.imdat = imdat
         self.imhdr = imhdr
         self.wcs = wcs.WCS(self.imhdr)
@@ -335,6 +339,8 @@ class TargetImage(object):
         if modelname not in self._photutils_output_dict:
             print("Model {} not loaded. Use load_psfmodel()".format(modelname))
             return
+        if self.skyvalperpix is None:
+            self.get_sky_from_annulus()
         hstpsfmodel = self._photutils_output_dict[modelname].psfmodel
 
         # Make the photometry object
@@ -348,6 +354,9 @@ class TargetImage(object):
         phot_results_table = hstphotobject.do_photometry(
             image=self.imdat, init_guesses=self.target_table)
         self._photutils_output_dict[modelname].photresultstable = phot_results_table
+
+        self._photutils_output_dict[modelname].get_flux_and_mag(
+            self.zpt, self.camera, self.filter)
 
 
     def get_sky_from_annulus(self, r_in=3, r_out=5, units='arcsec'):
@@ -414,74 +423,59 @@ class TargetImage(object):
             MeasuredPhotometry('aperturephot', 'aperture')
         self._photutils_output_dict['aperturephot'].photresultstable = \
             phot_table
+        self._photutils_output_dict['aperturephot'].get_flux_and_mag(
+            self.zpt, self.camera, self.filter)
 
-        #self._photutils_output_dict['aperturephot'].convert_fluxes_to_mags(
-        #    zpt=self.zpt, photsys=self.photsys)
 
     @property
     def phot_summary_table(self, verbose=False):
-        """Create a Table object summarizing the photometry results.
+        """Creates a Table object summarizing the photometry results.
         """
-        assert 'photometry' in self.__dict__, \
+        assert len(self._photutils_output_dict),\
             "No photometry recorded. Run a photometry function first."
 
         if 'aperturephot' in self._photutils_output_dict:
             apphot = self._photutils_output_dict['aperturephot']
-        for k in self._photutils_output_dict:
-            if k == 'aperturephot':
 
+        nmeasurements = sum([phot.nmeasurements for phot in
+                             self._photutils_output_dict.values()])
+        mjdcol = Column(name='MJD', data=np.ones(nmeasurements) * self.mjd)
+        imagecol = Column(
+            name='IMAGE', data=[self.filename for i in range(nmeasurements)])
+        magsyscol = Column(
+            name='MAGSYS', data=[self.photsys for i in range(nmeasurements)])
+        zpcol = Column(
+            name='ZP', data=[self.zpt for i in range(nmeasurements)])
+        skycol = Column(
+            name='SKY', data=[self.skyvalperpix for i in range(nmeasurements)])
+        skyerrcol = Column(
+            name='SKYERR', data=[self.skyerr for i in range(nmeasurements)])
+
+        aperlist = np.array([])
+        fluxlist = np.array([])
+        fluxerrlist = np.array([])
+        maglist = np.array([])
+        magerrlist = np.array([])
+
+        for phot in self._photutils_output_dict.values():
+            if phot.phot_type == 'aperture':
+                aperlist = np.append(aperlist, phot.aperture_radii)
             else:
-            self._photutils_output_dict[]
-        # Number of photometric measurements recorded (aperture + psf)
-        nphot = len(self._photutils_output_dict.flux_ap) #+ len(self._photutils_output_dict.flux_psf)
+                aperlist = np.append(aperlist, 0)
+            fluxlist = np.append(fluxlist, phot.flux)
+            fluxerrlist = np.append(fluxerrlist, phot.fluxerr)
+            maglist = np.append(maglist, phot.mag)
+            magerrlist = np.append(magerrlist, phot.magerr)
+        apercol = Column(name='APER', data=aperlist)
+        fluxcol = Column(name='FLUX', data=fluxlist)
+        fluxerrcol = Column(name='FLUXERR', data=fluxerrlist)
+        magcol = Column(name='MAG', data=maglist)
+        magerrcol = Column(name='MAGERR', data=magerrlist)
 
-        phot_table = Table(
-            names=['aper', 'flux', 'fluxerr', 'mag', 'magerr',
-                   'magsys', 'zp', 'sky', 'skyerr', 'image'],
-            data=[self._photutils_output_dict.ap]
-        )
-
-        # data = [self.targetname for i in range(len()], name='target')
-        #phot_table['target'].
+        phot_table = Table([mjdcol, apercol, fluxcol, fluxerrcol,
+                            magcol, magerrcol, magsyscol, zpcol,
+                            skycol, skyerrcol, imagecol])
         return phot_table
-
-        # if printstyle.lower() == 'long':
-        #     headerline = "#  TARGET                RA         DEC       MJD " \
-        #                  "FILTER APER       FLUX  FLUXERR         MAG   " \
-        #                  "MAGERR  MAGSYS      ZP      SKY SKYERR  IMAGE "
-        # else:
-        #     headerline = "# MJD     FILTER  APER      FLUX   FLUXERR       " \
-        #                  "MAG     MAGERR  MAGSYS    ZP       SKY   SKYERR "
-        #
-        # ra, dec = xy2radec(imhdr, xc, yc, ext=ext)
-        #
-        #
-        # maglinelist = []
-        # for iap in range(len(aparcsec)):
-        #     if printstyle == 'snana':
-        #         magline = 'OBS: %8.2f   %6s   %s %8.3f %8.3f    ' \
-        #                   '%8.3f %8.3f   %.3f' % (
-        #                       float(mjdobs), FilterAlpha[filtername], target,
-        #                       fluxcal[iap], fluxcalerr[iap], mag[iap], magerr[iap],
-        #                       zpt)
-        #     elif printstyle in ['long', 'verbose']:
-        #         magline = '%-15s  %10.5f  %10.5f  %.3f  %6s  %4.2f  %9.4f %8.4f  ' \
-        #                   ' %9.4f %8.4f  %5s   %7.4f  %7.4f %6.4f  %s' % (
-        #                       target, ra, dec, float(mjdobs), filtername,
-        #                       aparcsec[iap],
-        #                       apflux[iap], apfluxerr[iap], mag[iap], magerr[iap],
-        #                       system,
-        #                       zpt, sky, skyerr, imfilename)
-        #     else:
-        #         magline = '%.3f  %6s  %4.2f  %9.4f %8.4f   %9.4f %8.4f  %5s   ' \
-        #                   '%7.4f  %7.4f %6.4f' % (
-        #                       float(mjdobs), filtername, aparcsec[iap],
-        #                       apflux[iap], apfluxerr[iap], mag[iap], magerr[iap],
-        #                       system,
-        #                       zpt, sky, skyerr)
-        #     maglinelist.append(magline)
-        #
-        # self.flux_ap
 
 
     def plot_resid_image(self, modelname, Npix=15):
