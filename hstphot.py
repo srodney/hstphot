@@ -3,6 +3,8 @@
 __author__ = 'rodney'
 
 import hstzpt_apcorr
+import astropyphot
+from os import path
 import sys
 import numpy as np
 if sys.version_info <= (3,0):
@@ -389,9 +391,6 @@ def doastropyphot(targetimfilename, xy, psfimfilename=None,
     :param debug:
     :return:
     """
-    from . import astropyphot
-    from os import path
-
     targetim = astropyphot.TargetImage(targetimfilename)
     if psfpixscale is None:
         psfpixscale = targetim.pixscale
@@ -409,29 +408,9 @@ def doastropyphot(targetimfilename, xy, psfimfilename=None,
         targetim.dopsfphot(psfmodelname, fitpix=fitpix, apradpix=apradpix)
         # psfphotresults = targetim.photometry[psfmodelname].phot_table
 
+    photresults = targetim.phot_summary_table
+    photresults.pprint()
     return targetim
-
-    # TODO : extract flux and error from aper and psf photometry!!
-    #psfflux =psfphotresults['']
-    #psffluxerr = 0.0
-
-    # TODO : convert astropyphot results into a string for printing
-    # return(apphotresults, psfphotresults)
-    # return apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr
-
-    # the sky measurement algorithm in photutils is not quite the same as
-    # in PythonPhot, so for now, we adopt the PythonPhot sky value instead
-    # of letting photutils compute it.
-    #if skyval is None:
-    #    skyval = sky
-    # output_photutils = astropyphot.get(
-    #     imdat, psfimage, [xpy, ypy],
-    #     psfradpix=psfradpix, apradpix=appix, ntestpositions=ntestpositions,
-    #     skyannpix=skyannpix, skyalgorithm=skyalgorithm, setskyval=skyval,
-    #     recenter_target=recenter, recenter_fakes=True, exact=exact,
-    #     exptime=exptime, ronoise=1, phpadu=phpadu, verbose=verbose,
-    #     debug=debug)
-    # apflux, apfluxerr, psfflux, psffluxerr, sky, skyerr = output_photutils
 
 
 def dopythonphot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
@@ -816,6 +795,10 @@ def main():
             verbose=argv.verbose, debug=argv.debug)
         for iap in range(len(maglinelist)):
             print(maglinelist[iap].strip())
+    elif argv.photpackage.lower() == 'photutils':
+        targetim = doastropyphot(
+            argv.image, [xim, yim], apradarcsec=aplist,
+            psfimfilename=argv.psfmodel)
 
 if __name__ == '__main__':
     main()

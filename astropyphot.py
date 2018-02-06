@@ -18,8 +18,8 @@ import exceptions
 from astropy.table import Column
 from astropy.stats import gaussian_sigma_to_fwhm, gaussian_fwhm_to_sigma
 
-from . import hstzpt_apcorr
-from . import hstphot
+import hstzpt_apcorr
+import hstphot
 
 _HST_WFC3_PSF_FWHM_ARCSEC = 0.14  # FWHM of the HST WFC3IR PSF in arcsec
 
