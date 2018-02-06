@@ -46,79 +46,136 @@ def centroid(imdat, x0, y0, boxsize=11):
     return xnew, ynew
 
 
-class Photometry(object):
-
-    def __init__(self, name):
+class MeasuredPhotometry(object):
+    """Holds the output of a photutils photometry run. Attributes store 
+    the name of this object, the type of photutils function used, 
+    the photutils.Photometry object, and the photometry results Table that 
+    contains the flux and flux uncertainty, as measured through apertures or 
+    via psf fitting. 
+    Methods allow conversion to magnitudes and application of aperture 
+    corrections. 
+    """
+    def __init__(self, name, phot_type):
+        assert phot_type in ['aperture', 'psf']
         self.name = name
+        self.phot_type = phot_type
         self.photobject = None
+        self.photresultstable = None
         self.psfmodel = None
-        self.photresults = None
-        self.mag_ap = []
-        self.magerr_ap = []
-        self.apradius = []
-        self.flux_ap = []
-        self.flux_ap_precor = []
-        self.apcor = []
+        self.mag = None
+        self.magerr = None
+        self.flux = None
+        self.flux_raw = None
+        self.fluxerr = None
+        self.fluxerr_raw = None
+        self.aperture_corrections = None
 
-    def convert_fluxes_to_mags(self, zpt, camera, filtername):
-        """Apply zero points and aperture corrections to convert the measured
-        fluxes into magnitudes.
+
+    @property
+    def napertures(self):
+        """Number of apertures measured"""
+        if self.phot_type=='psf':
+            return None
+        if self.photresultstable is None:
+            return None
+        apertures = np.array([int(k.split('_')[-1])
+                             for k in self.photresultstable.colnames
+                             if k.startswith('aperture_sum')])
+        return len(apertures)
+
+    @property
+    def aperture_radii(self):
+        """Aperture radii in arcsec"""
+        if self.phot_type=='psf':
+            return None
+        if self.photresultstable is None:
+            return None
+        apradii = np.array([self.photresultstable[
+                                'radius_arcsec_{:d}'.format(i)].data[0]
+                            for i in range(self.napertures)])
+        return apradii
+
+
+
+    def get_flux_and_mag(self, zpt, camera, filtername):
+        """Apply aperture corrections to correct the measured (raw) flux to 
+        the infinite-aperture-equivalent; apply zero points toconvert the 
+        corrected fluxes into magnitudes.
         :param zpt: zero point magnitude
         :param camera: HST camera name (e.g. 'WFC3-IR')
         :param filtername: HST filter name (e.g. 'F125W')
+        
+        Resulting fluxes and mags are stored as attributes.
         """
-        if 'aperture_sum_0' in self.photresults.colnames:
+        if self.photresultstable is None:
+            print("No photometry results.  Run doapphot or dopsfphot first.")
+            return None
+
+        if self.phot_type == 'aperture':
             # This is a table of aperture photometry.
-            # Extract the measured fluxes from the aperture photometry table
-            apidlist = np.array([int(k.split('_')[-1])
-                                 for k in self.photresults.colnames
-                                 if k.startswith('aperture_sum')])
-            apflux_raw = np.array(
-                [self.photresults[
-                     'aperture_sum_{:d}'.format(apidlist[i])].data[0]
-                 for i in apidlist])
-            apradius = np.array([
-                self.photresults[
-                    'radius_arcsec_{:d}'.format(apidlist[i])].data[0]
-                for i in apidlist])
+            self.flux_raw = np.array(
+                [self.photresultstable['aperture_sum_{:d}'.format(iap)].data[0]
+                 for iap in range(self.napertures)])
 
             # TODO: get flux uncertainties too!!
-            apfluxerr_raw = np.zeros(len(apflux_raw))
+            self.fluxerr_raw = np.zeros(len(self.flux_raw))
 
             # get the aperture corrections and apply to the measured fluxes
             if camera == 'WFC3-IR':
-                apcor, aperr = hstzpt_apcorr.apcorrWFC3IR(filtername, apradius)
+                apcor, aperr = hstzpt_apcorr.apcorrWFC3IR(
+                    filtername, self.aperture_radii)
             elif camera == 'WFC3-UVIS':
-                apcor, aperr = hstzpt_apcorr.apcorrWFC3UVIS(filtername, apradius)
+                apcor, aperr = hstzpt_apcorr.apcorrWFC3UVIS(
+                    filtername, self.aperture_radii)
             elif camera == 'ACS-WFC':
-                apcor, aperr = hstzpt_apcorr.apcorrACSWFC(filtername, apradius)
+                apcor, aperr = hstzpt_apcorr.apcorrACSWFC(
+                    filtername, self.aperture_radii)
             else:
                 raise RuntimeWarning(
                     "No aperture correction defined for "
                     " camera {}".format(camera))
-            fluxcor = 10**(0.4*apcor)
-            apflux = apflux_raw * fluxcor
-            #  Systematic err from aperture correction :
-            ferrap = 0.4 * np.log(10) * apflux * aperr
-            apfluxerr = np.sqrt(apfluxerr_raw ** 2 + ferrap ** 2) # total err
+            self.aperture_corrections = apcor
 
-            # Convert flux to magnitudes
-            self.mag_ap = []
-            self.magerr_ap = []
-            for i in range(len(apidlist)):
-                if apflux[i] <= 0:
-                    mag = -2.5 * np.log10(3 * abs(apfluxerr[i])) \
-                          + zpt - apcor[i]
-                    magerr = -9.0
-                else:
-                    mag = -2.5 * np.log10(apflux[i]) + zpt
-                    magerr = 1.0857 * apfluxerr[i] / apflux[i]
-                self.mag_ap.append(mag)
-                self.magerr_ap.append(magerr)
-            self.apradius = apradius
-            self.flux_ap = apflux
-            self.flux_ap_precor = apflux_raw
-            self.apcor = apcor
+            # Aperture-corrected flux measurements
+            fluxcor = 10**(0.4*apcor)
+            self.flux = self.flux_raw * fluxcor
+
+            #  Systematic err from aperture correction :
+            ferrap = 0.4 * np.log(10) * self.flux * aperr
+            self.fluxerr = np.sqrt(self.fluxerr_raw ** 2 + ferrap ** 2)
+            nmeasurements = self.napertures
+
+        else:
+            # This is a table of PSF-fitting photometry measurements
+            self.flux_raw = self.photresultstable['flux_fit'].data[0]
+            self.fluxerr_raw = self.photresultstable['flux_unc'].data[0]
+
+            # TODO: apply a correction factor for PSF scaling?
+            self.flux = self.flux_raw
+            self.fluxerr = self.fluxerr_raw
+            nmeasurements = 1
+
+        # Convert the (corrected) flux to magnitudes and store
+        maglist, magerrlist = [], []
+        if nmeasurements == 1:
+            flux = [self.flux]
+            fluxerr = [self.fluxerr]
+        for i in range(nmeasurements):
+            if flux[i] <= 0:
+                m = -2.5 * np.log10(3 * abs(fluxerr[i])) + zpt
+                merr = -9.0
+            else:
+                m = -2.5 * np.log10(flux[i]) + zpt
+                merr = 1.0857 * fluxerr[i] / flux[i]
+            maglist.append(m)
+            magerrlist.append(merr)
+        if nmeasurements>1:
+            self.mag = np.array(maglist)
+            self.magerr = np.array(magerrlist)
+        else:
+            self.mag = maglist[0]
+            self.magerr = magerrlist[0]
+
 
 
 class TargetImage(object):
@@ -136,37 +193,43 @@ class TargetImage(object):
         self.imdat = imdat
         self.imhdr = imhdr
         self.wcs = wcs.WCS(self.imhdr)
-        self.pixscale = np.mean(
-            wcs.utils.proj_plane_pixel_scales(self.wcs.celestial) * 3600)
+        pixscale = wcs.utils.proj_plane_pixel_scales(self.wcs.celestial) * 3600
+        if np.iterable(pixscale):
+            self.pixscale = np.mean(pixscale)
+        else:
+            self.pixscale = pixscale
 
-        # Instrument, Camera, and Zero point
+        # From the header, get Instrument, Camera, filter, Zero point, MJD
         self.photsys = photsys
-        self.zpt = hstzpt_apcorr.getzpt([imhdr, imdat], system=self.photsys)
         self.camera = hstphot.getcamera([imhdr, imdat])
         self.filter = hstphot.getfilter([imhdr, imdat])
+        self.zpt = hstzpt_apcorr.getzpt([imhdr, imdat], system=self.photsys)
+        if 'EXPSTART' in imhdr and 'EXPEND' in imhdr:
+            self.mjd = (imhdr['EXPEND'] + imhdr['EXPSTART']) / 2.
+        else:
+            self.mjd = 0.0
 
         # initial guesses of position and flux of the target source
         self.x_0 = None
         self.y_0 = None
         self.flux_0 = None
+        self.targetname = None
 
         # Sky annulus
         self.skyxy = None
         self.skyannpix = None
         self.skyvalperpix = None
 
-
         # Dictionary of Photometry objects. Each entry will hold a PSF model,
         # photometry object, and phot results table. Keyed with
         # user-specified names for the psf models.
-        self.photometry = {}
+        self._photutils_output_dict = {}
 
     @property
     def target_table(self):
         """ Returns a Table object with the centroid coordinates and the required
         column names x_0 and y_0. We include a flux_0 column to
         give an initial guess for the flux of the star."""
-
         if self.flux_0 is None:
             target_table = Table(
                 data=[[self.x_0], [self.y_0]], names=['x_0', 'y_0'])
@@ -176,25 +239,58 @@ class TargetImage(object):
                 names=['x_0','y_0','flux_0'])
         return target_table
 
+    def xy2radec(self, x, y):
+        """ Convert the given x,y pixel position into
+        ra,dec sky coordinates (in decimal degrees) for the given image.
 
-    # TODO : allow multiple targets?
+        NOTE : this program assumes the input position follows the fits convention,
+        with the center of the lower left pixel at (1,1).  The numpy/scipy
+        convention sets the center of the lower left pixel at (0,0).
+
+        :param x, y: pixel location
+        """
+        ra, dec = self.wcs.wcs_pix2world(x, y, 1)
+        return ra, dec
+
+    def radec2xy(self, ra, dec):
+        """ Convert the given ra,dec position (in decimal degrees) into
+        x,y pixel coordinates on the given image.
+        NOTE : the pixel values returned are in the fits style, with the center
+          of the lower left pixel at (1,1).  The numpy/scipy convention sets
+          the center of the lower left pixel at (0,0).
+        """
+        x, y = self.wcs.wcs_world2pix(ra, dec, 1)
+        return x, y
+
     def set_target(self, x_0=None, y_0=None, flux_0=None,
+                   ra_0=None, dec_0=None, targetname=None,
                    recenter=False):
-        """set the pixel location and optionally the flux of the target"""
-        # TODO: allow RA,Dec location
-        if x_0 is None:
-            self.x_0 = self.imdat.shape[0] / 2.
+        """set the initial guesses for pixel location and optionally
+        the flux of the target"""
+        # TODO: allow user to specify multiple targets on a single image
+        if ra_0 is not None:
+            assert dec_0 is not None, "Must provide either x,y or RA,Dec"
+            assert x_0 is None, "Must provide either x,y or RA,Dec, not both"
+            self.ra_0 = ra_0
+            self.dec_0 = dec_0
+            self.x_0, self.y_0 = self.radec2xy(ra_0, dec_0)
         else:
-            self.x_0 = x_0
-        if y_0 is None:
-            self.y_0 = self.imdat.shape[1] / 2.
+            if x_0 is not None:
+                assert y_0 is not None, "Must provide either x,y or RA,Dec"
+                self.x_0 = x_0
+                self.y_0 = y_0
+                self.ra_0, self.dec_0 = self.xy2radec(x_0, y_0)
+            else:
+                self.x_0 = self.imdat.shape[0] / 2.
+                self.y_0 = self.imdat.shape[1] / 2.
+        if targetname is None:
+            self.targetname = 'target'
         else:
-            self.y_0 = y_0
-
+            self.targetname = targetname
         if recenter:
             # Apply a centroiding algorithm to locate the source in the image
             self.x_0, self.y_0 = centroid(self.imdat, self.x_0, self.y_0)
-
+            self.ra_0, self.dec_0 = self.xy2radec(self.x_0, self.y_0)
         # If the user leaves flux0 as None then aperture photometry will
         # be used for the first guess at the flux of the target
         self.flux_0 = flux_0
@@ -202,6 +298,7 @@ class TargetImage(object):
 
     def load_psfmodel(self, psfimfilename, modelname=None, **kwargs):
         """Initialize an HSTPSFModel object to use for measuring photometry 
+
         :param psfimfilename: full path to the psf image fits file
         :param modelname: name of the model to store in the modeldict. If left 
          as None, the basename of the psf image file is used.
@@ -213,13 +310,13 @@ class TargetImage(object):
         # TODO: special case for a Gaussian PRF
 
         # Load a psf model from a "psf star image"
-        self.photometry[modelname] = Photometry(modelname)
-        self.photometry[modelname].psfmodel = HSTPSFModel(
+        self._photutils_output_dict[modelname] = \
+            MeasuredPhotometry(modelname, 'psf')
+        self._photutils_output_dict[modelname].psfmodel = HSTPSFModel(
             psfimfilename, self.pixscale, **kwargs)
 
 
-    def dopsfphot(self, modelname, fitpix=11, apradpix=3,
-                  **kwargs):
+    def dopsfphot(self, modelname, fitpix=11, apradpix=3):
         """Do photometry of the target: 
         set up a photometry object, do the photometry and store the results.
         fitpix : int or length-2 array-like
@@ -235,10 +332,10 @@ class TargetImage(object):
           be used if it can be determined from the ```psf_model``.
         
         """
-        if modelname not in self.photometry:
+        if modelname not in self._photutils_output_dict:
             print("Model {} not loaded. Use load_psfmodel()".format(modelname))
             return
-        hstpsfmodel = self.photometry[modelname].psfmodel
+        hstpsfmodel = self._photutils_output_dict[modelname].psfmodel
 
         # Make the photometry object
         hstphotobject = BasicPSFPhotometry(
@@ -246,11 +343,11 @@ class TargetImage(object):
             bkg_estimator=hstpsfmodel.bkg_estimator,
             fitter=hstpsfmodel.fitter, fitshape=fitpix,
             aperture_radius=apradpix)
-        self.photometry[modelname].photobject = hstphotobject
+        self._photutils_output_dict[modelname].photobject = hstphotobject
 
         phot_results_table = hstphotobject.do_photometry(
             image=self.imdat, init_guesses=self.target_table)
-        self.photometry[modelname].photresults = phot_results_table
+        self._photutils_output_dict[modelname].photresultstable = phot_results_table
 
 
     def get_sky_from_annulus(self, r_in=3, r_out=5, units='arcsec'):
@@ -313,11 +410,78 @@ class TargetImage(object):
             apcol = Column(name=colname, data=[apradarcsec,])
             phot_table.add_column(apcol)
 
-        self.photometry['aperturephot'] = Photometry('aperturephot')
-        self.photometry['aperturephot'].photresults = phot_table
+        self._photutils_output_dict['aperturephot'] = \
+            MeasuredPhotometry('aperturephot', 'aperture')
+        self._photutils_output_dict['aperturephot'].photresultstable = \
+            phot_table
 
-        #self.photometry['aperturephot'].convert_fluxes_to_mags(
+        #self._photutils_output_dict['aperturephot'].convert_fluxes_to_mags(
         #    zpt=self.zpt, photsys=self.photsys)
+
+    @property
+    def phot_summary_table(self, verbose=False):
+        """Create a Table object summarizing the photometry results.
+        """
+        assert 'photometry' in self.__dict__, \
+            "No photometry recorded. Run a photometry function first."
+
+        if 'aperturephot' in self._photutils_output_dict:
+            apphot = self._photutils_output_dict['aperturephot']
+        for k in self._photutils_output_dict:
+            if k == 'aperturephot':
+
+            else:
+            self._photutils_output_dict[]
+        # Number of photometric measurements recorded (aperture + psf)
+        nphot = len(self._photutils_output_dict.flux_ap) #+ len(self._photutils_output_dict.flux_psf)
+
+        phot_table = Table(
+            names=['aper', 'flux', 'fluxerr', 'mag', 'magerr',
+                   'magsys', 'zp', 'sky', 'skyerr', 'image'],
+            data=[self._photutils_output_dict.ap]
+        )
+
+        # data = [self.targetname for i in range(len()], name='target')
+        #phot_table['target'].
+        return phot_table
+
+        # if printstyle.lower() == 'long':
+        #     headerline = "#  TARGET                RA         DEC       MJD " \
+        #                  "FILTER APER       FLUX  FLUXERR         MAG   " \
+        #                  "MAGERR  MAGSYS      ZP      SKY SKYERR  IMAGE "
+        # else:
+        #     headerline = "# MJD     FILTER  APER      FLUX   FLUXERR       " \
+        #                  "MAG     MAGERR  MAGSYS    ZP       SKY   SKYERR "
+        #
+        # ra, dec = xy2radec(imhdr, xc, yc, ext=ext)
+        #
+        #
+        # maglinelist = []
+        # for iap in range(len(aparcsec)):
+        #     if printstyle == 'snana':
+        #         magline = 'OBS: %8.2f   %6s   %s %8.3f %8.3f    ' \
+        #                   '%8.3f %8.3f   %.3f' % (
+        #                       float(mjdobs), FilterAlpha[filtername], target,
+        #                       fluxcal[iap], fluxcalerr[iap], mag[iap], magerr[iap],
+        #                       zpt)
+        #     elif printstyle in ['long', 'verbose']:
+        #         magline = '%-15s  %10.5f  %10.5f  %.3f  %6s  %4.2f  %9.4f %8.4f  ' \
+        #                   ' %9.4f %8.4f  %5s   %7.4f  %7.4f %6.4f  %s' % (
+        #                       target, ra, dec, float(mjdobs), filtername,
+        #                       aparcsec[iap],
+        #                       apflux[iap], apfluxerr[iap], mag[iap], magerr[iap],
+        #                       system,
+        #                       zpt, sky, skyerr, imfilename)
+        #     else:
+        #         magline = '%.3f  %6s  %4.2f  %9.4f %8.4f   %9.4f %8.4f  %5s   ' \
+        #                   '%7.4f  %7.4f %6.4f' % (
+        #                       float(mjdobs), filtername, aparcsec[iap],
+        #                       apflux[iap], apfluxerr[iap], mag[iap], magerr[iap],
+        #                       system,
+        #                       zpt, sky, skyerr)
+        #     maglinelist.append(magline)
+        #
+        # self.flux_ap
 
 
     def plot_resid_image(self, modelname, Npix=15):
@@ -328,18 +492,18 @@ class TargetImage(object):
         will return a valid resid image.
         TODO: make this more generalized!"""
 
-        if modelname not in self.photometry:
+        if modelname not in self._photutils_output_dict:
             print("Model {} not loaded. Use load_psfmodel()"
                   " and then dophot() to run photometry.".format(modelname))
             return
-        photinstance = self.photometry[modelname]
+        photinstance = self._photutils_output_dict[modelname]
         if photinstance.photresults is None:
             print("No phot results for model {}. "
                   " Use dophot()".format(modelname))
             return
 
-        psfmodel = self.photometry[modelname].psfmodel
-        results_table = self.photometry[modelname].photresults
+        psfmodel = self._photutils_output_dict[modelname].psfmodel
+        results_table = self._photutils_output_dict[modelname].photresults
         targetimdat = self.imdat
 
         # TODO : read these from the results table?
@@ -361,7 +525,7 @@ class TargetImage(object):
                                   np.arange(len(targetimdat)))
         parameters_to_set = {'x_fit': 'x_0', 'y_fit': 'y_0', 'flux_fit': 'flux'}
 
-        photobject = self.photometry[modelname].photobject
+        photobject = self._photutils_output_dict[modelname].photobject
         groupmodel = photutils.psf.models.get_grouped_psf_model(
             photobject.psf_model, results_table, parameters_to_set)
         psf_image = groupmodel(gridindices[0], gridindices[1])
