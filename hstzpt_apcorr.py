@@ -265,7 +265,9 @@ def apcorrWFC3IR( filt, aprad_arcsec, eetable='default'):
 
     # central filter wavelength, um, for WFC3-IR filter names
     filtwave = int(filt.strip( ascii_letters+punctuation ))  / 100.
-    if np.iterable(aprad_arcsec) and not np.iterable(filtwave):
+    if not np.iterable(aprad_arcsec):
+        aprad_arcsec = np.array([aprad_arcsec,])
+    if not np.iterable(filtwave):
         filtwave = np.array([filtwave for i in range(len(aprad_arcsec))])
 
     if eetable == 'default':
@@ -384,7 +386,9 @@ def apcorrWFC3IR( filt, aprad_arcsec, eetable='default'):
 
     ee_interp = scint.interp2d(wl, ap, ee, kind='linear',
                                bounds_error=False, fill_value=1.0)
-    EEfrac_ap = ee_interp(filtwave, aprad_arcsec)[:, 0]
+    EEfrac_ap = ee_interp(filtwave, aprad_arcsec)
+    if len(EEfrac_ap.shape)>1:
+        EEfrac_ap = EEfrac_ap[:,0]
 
     # magnitude to add to measured mag, to correct to an infinite aperture
     apcor = -2.5 * np.log10(EEfrac_ap)
