@@ -184,7 +184,7 @@ class MeasuredPhotometry(object):
 class TargetImage(object):
     """An image containing an isolated point source to be photometered."""
 
-    def __init__(self, imfilename, ext=None, photsys='AB'):
+    def __init__(self, imfilename, ext=None, photsys='AB', zpt=None):
         """ 
         :param imfilename: full path for a .fits image file
         :param ext:  Fits image extension containing the image data.
@@ -207,7 +207,10 @@ class TargetImage(object):
         self.photsys = photsys
         self.camera = hstphot.getcamera([imhdr, imdat])
         self.filter = hstphot.getfilter([imhdr, imdat])
-        self.zpt = hstzpt_apcorr.getzpt([imhdr, imdat], system=self.photsys)
+        if zpt is None:
+            self.zpt = hstzpt_apcorr.getzpt([imhdr, imdat], system=self.photsys)
+        else:
+            self.zpt = zpt
         if 'EXPSTART' in imhdr and 'EXPEND' in imhdr:
             self.mjd = (imhdr['EXPEND'] + imhdr['EXPSTART']) / 2.
         else:

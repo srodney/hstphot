@@ -356,7 +356,7 @@ def getheaderanddata(image, ext=None):
 def doastropyphot(targetimfilename, xy, psfimfilename=None,
                   psfpixscale=None, recenter_target=True,
                   apradarcsec=[0.1,0.2,0.3], skyannradarcsec=[3.0,5.0],
-                  fitpix=11, targetname='TARGET',
+                  fitpix=11, targetname='TARGET', zpt=None,
                   ntestpositions=100, psfradpix=3,
                   skyannpix=None, skyalgorithm='sigmaclipping',
                   setskyval=None, recenter_fakes=True,
@@ -391,7 +391,7 @@ def doastropyphot(targetimfilename, xy, psfimfilename=None,
     :param debug:
     :return:
     """
-    targetim = astropyphot.TargetImage(targetimfilename)
+    targetim = astropyphot.TargetImage(targetimfilename, zpt=zpt)
     if psfpixscale is None:
         psfpixscale = targetim.pixscale
     targetim.set_target(x_0=xy[0], y_0=xy[1], targetname=targetname,
@@ -798,7 +798,7 @@ def main():
     elif argv.photpackage.lower() == 'photutils':
         targetim = doastropyphot(
             argv.image, [xim, yim], apradarcsec=aplist,
-            psfimfilename=argv.psfmodel)
+            psfimfilename=argv.psfmodel, zpt=argv.zeropoint)
 
 if __name__ == '__main__':
     main()
