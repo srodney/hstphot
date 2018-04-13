@@ -90,8 +90,8 @@ def getzptACS(image, system='Vega', ext=0):
     from astropy.io import ascii
     from scipy import interpolate as scint
 
-    hdr = getheader(image, ext=ext)
-    filtim = getfilter(hdr)
+    hdr = hstphot.getheader(image, ext=ext)
+    filtim = hstphot.getfilter(hdr)
     mjdim = hdr['EXPSTART']
 
     thisfile = sys.argv[0]
