@@ -270,7 +270,7 @@ def apcorrWFC3IR( filt, aprad_arcsec, eetable='default'):
     if not np.iterable(filtwave):
         filtwave = np.array([filtwave for i in range(len(aprad_arcsec))])
 
-    if eetable == 'default':
+    if eetable == 'p330e':
         # Derived from measurements of drizzled HST images in broadband
         # WFC3-IR filters of the standard star P330E.
         # wavelengths and aperture sizes (in arcsec) for the x and y
@@ -282,7 +282,9 @@ def apcorrWFC3IR( filt, aprad_arcsec, eetable='default'):
               1.9, 1.95, 2.0, 2.1, 2.15, 2.2, 2.25, 2.3, 2.35, 2.4, 2.45, 2.6,
               2.65, 2.7, 2.75, 2.8, 2.85, 2.9, 2.95, 3.0, ]
 
-        ee = np.array([
+        # Note: factor of 0.978 rescales to match wide-aperture limit from
+        # published STScI EE tables.
+        ee = 0.978 * np.array([
             [0.0, 0.0, 0.0, 0.0, 0.0],
             [0.403728, 0.4023152, 0.392663, 0.3677491, 0.346245],
             [0.618763, 0.6039498, 0.573211, 0.54726, 0.5196374],
@@ -341,7 +343,7 @@ def apcorrWFC3IR( filt, aprad_arcsec, eetable='default'):
             [1.0, 1.0, 1.0, 1.0, 1.0],
         ])
 
-    elif eetable == 'stsci':
+    elif eetable in ['default', 'stsci']:
         # wavelengths and aperture sizes (in arcsec) for the x and y
         # dimensions of the WFC3-IR encircled energy table, respectively
         wl = [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7]
@@ -384,7 +386,7 @@ def apcorrWFC3IR( filt, aprad_arcsec, eetable='default'):
     else:
         wl, ap, ee = read_eetable(eetable)
 
-    ee_interp = scint.interp2d(wl, ap, ee, kind='linear',
+    ee_interp = scint.interp2d(wl, ap, ee, kind='cubic',
                                bounds_error=False, fill_value=1.0)
     EEfrac_ap = ee_interp(filtwave, aprad_arcsec)
     if len(EEfrac_ap.shape)>1:
