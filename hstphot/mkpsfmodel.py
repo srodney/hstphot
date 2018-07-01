@@ -3,6 +3,7 @@ import os
 import numpy as np
 from PythonPhot import getpsf, aper
 from astropy.io import fits as pyfits
+from .__main__ import getxycenter
 
 
 def getcamera(imfile):
@@ -101,7 +102,7 @@ def mkpsfmodel_stdstar(psfimdir="./", psfrad=0.3, fitrad=0.15,
 
         xmid = np.array([hdr['NAXIS1'] / 2.]) - 1
         ymid = np.array([hdr['NAXIS2'] / 2.]) - 1
-        xpos, ypos = hstphot.getxycenter(
+        xpos, ypos = getxycenter(
             inputfile, xmid, ymid, ext=0, radec=False,
             fitsconvention=False, verbose=True)
         if verbose:

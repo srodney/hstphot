@@ -5,10 +5,11 @@
 # Energy tables or P330E photometry
 __author__ = 'srodney'
 
-import hstphot
+from .__main__ import *
 import os
 import sys
 import numpy as np
+from .util import getcamera, getheader, getfilter
 
 
 # Average flux of vega through an infinite aperture for ACS filters :
@@ -51,9 +52,9 @@ def getzpt(image, system='Vega', ext=0):
 
     :return: float zeropoint magnitude
     """
-    header = hstphot.getheader(image, ext=ext)
-    filt = hstphot.getfilter(header)
-    camera = hstphot.getcamera(header)
+    header = getheader(image, ext=ext)
+    filt = getfilter(header)
+    camera = getcamera(header)
     if camera == 'ACS-WFC':
         # For ACS the zero point varies with time, so we interpolate
         # from a fixed table for either AB or Vega.
@@ -90,8 +91,8 @@ def getzptACS(image, system='Vega', ext=0):
     from astropy.io import ascii
     from scipy import interpolate as scint
 
-    hdr = hstphot.getheader(image, ext=ext)
-    filtim = hstphot.getfilter(hdr)
+    hdr = getheader(image, ext=ext)
+    filtim = getfilter(hdr)
     mjdim = hdr['EXPSTART']
 
     thisfile = sys.argv[0]
@@ -109,7 +110,7 @@ def getzptACS(image, system='Vega', ext=0):
     elif system.lower().startswith('ab'):
         zpt = zptdat['ABMAG'][ifilt]
     else:
-        raise exceptions.RuntimeError(
+        raise RuntimeError(
             "Magnitude system %s not recognized" % system)
     mjd = zptdat['MJD'][ifilt]
     zptinterp = scint.interp1d(mjd, zpt, bounds_error=True)

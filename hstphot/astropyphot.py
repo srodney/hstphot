@@ -14,12 +14,11 @@ from photutils.background import MMMBackground, MADStdBackgroundRMS
 from photutils.aperture import (CircularAperture, CircularAnnulus,
                                 aperture_photometry)
 from astropy.modeling.fitting import LevMarLSQFitter
-import exceptions
 from astropy.table import Column
 from astropy.stats import gaussian_sigma_to_fwhm, gaussian_fwhm_to_sigma
 
-import hstzpt_apcorr
-import hstphot
+from . import hstzpt_apcorr
+from .util import getheaderanddata, getcamera, getfilter
 
 _HST_WFC3_PSF_FWHM_ARCSEC = 0.14  # FWHM of the HST WFC3IR PSF in arcsec
 
@@ -192,7 +191,7 @@ class TargetImage(object):
         """
 
         # read in the target image and determine the pixel scale (arcsec/pix)
-        imhdr, imdat = hstphot.getheaderanddata(imfilename, ext=ext)
+        imhdr, imdat = getheaderanddata(imfilename, ext=ext)
         self.filename = path.basename(imfilename)
         self.imdat = imdat
         self.imhdr = imhdr
@@ -205,8 +204,8 @@ class TargetImage(object):
 
         # From the header, get Instrument, Camera, filter, Zero point, MJD
         self.photsys = photsys
-        self.camera = hstphot.getcamera([imhdr, imdat])
-        self.filter = hstphot.getfilter([imhdr, imdat])
+        self.camera = getcamera([imhdr, imdat])
+        self.filter = getfilter([imhdr, imdat])
         if zpt is None:
             self.zpt = hstzpt_apcorr.getzpt([imhdr, imdat], system=self.photsys)
         else:
@@ -375,7 +374,7 @@ class TargetImage(object):
             r_in = r_in / self.pixscale
             r_out = r_out / self.pixscale
         elif not units.lower().startswith('pix'):
-            raise exceptions.RuntimeError
+            raise RuntimeError('Unknown unit %s'%units)
 
         skyannulus = CircularAnnulus(self.skyxy, r_in=r_in, r_out=r_out)
         phot_table = aperture_photometry(
