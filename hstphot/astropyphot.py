@@ -18,7 +18,7 @@ from astropy.table import Column
 from astropy.stats import gaussian_sigma_to_fwhm, gaussian_fwhm_to_sigma
 
 from . import hstzpt_apcorr
-from .util import getheaderanddata, getcamera, getfilter
+from .util import getheaderanddata, getcamera, getfilter, radec2xy
 
 _HST_WFC3_PSF_FWHM_ARCSEC = 0.14  # FWHM of the HST WFC3IR PSF in arcsec
 
@@ -43,6 +43,71 @@ def centroid(imdat, x0, y0, boxsize=11):
     xnew, ynew = photutils.centroid_2dg(imdat, mask=mask)
 
     return xnew, ynew
+
+
+def doastropyphot(targetimfilename, coordinates, coord_type='sky',
+                  psfimfilename=None, ext=0,
+                  psfpixscale=None, recenter_target=True,
+                  apradarcsec=[0.1,0.2,0.3], skyannradarcsec=[3.0,5.0],
+                  fitpix=11, targetname='TARGET', zpt=None,
+                  ntestpositions=100, psfradpix=3,
+                  skyannpix=None, skyalgorithm='sigmaclipping',
+                  setskyval=None, recenter_fakes=True,
+                  exptime=1, exact=True, ronoise=1, phpadu=1, verbose=False,
+                  debug=False):
+    """ Measure the flux (and uncertainty?) using the astropy-affiliated
+    photutils package.
+
+    :param targetimfilename: name of the .fits image file with the target (the
+      star to be photometered).
+    :param coordinates: x,y or ra,dec coordinates
+    :param psfimfilename: name of the .fits image file with the PSF image (the
+      star that defines a PSF model to be fit to the target)
+    :param psfpixscale: Pixel scale of the PSF star (necessary if header of the
+      PSF star image does not provide WCS keywords that define the pixel scale)
+    :param recenter_target: boolean;  Use a centroiding algorithm to locate the
+      center of the target star. Set to 'False' for "forced photometry"
+    :param apradpix: list of aperture radii in arcsec, for aperture photometry
+    :param skyannradarcsec: inner and outer radii in arcsec for the sky annulus
+      (the annulus in which the sky is measured)
+
+    :param ntestpositions:
+    :param psfradpix:
+    :param skyalgorithm:
+    :param setskyval:
+    :param recenter_fakes:
+    :param exptime:
+    :param exact:
+    :param ronoise:
+    :param phpadu:
+    :param verbose:
+    :param debug:
+    :return:
+    """
+    if coord_type.lower() in ['sky', 'radec']:
+        x, y = coordinates
+        coordinates = radec2xy(targetimfilename, x, y, ext=ext)
+
+    targetim = TargetImage(targetimfilename, zpt=zpt)
+    if psfpixscale is None:
+        psfpixscale = targetim.pixscale
+    targetim.set_target(x_0=coordinates[0], y_0=coordinates[1], targetname=targetname,
+                        recenter=recenter_target)
+
+    targetim.doapphot(apradarcsec, units='arcsec')
+    # apphotresults = targetim.photometry['aperturephot'].phot_table
+
+    if psfimfilename is not None:
+        psfmodelname = path.basename(psfimfilename)
+        targetim.load_psfmodel(psfimfilename, psfmodelname,
+                               psfpixscale=psfpixscale)
+        apradpix = np.max([5, np.round(fitpix/2.)])
+        targetim.dopsfphot(psfmodelname, fitpix=fitpix, apradpix=apradpix)
+        # psfphotresults = targetim.photometry[psfmodelname].phot_table
+
+    photresults = targetim.phot_summary_table
+    photresults.pprint()
+    return targetim
 
 
 class MeasuredPhotometry(object):
