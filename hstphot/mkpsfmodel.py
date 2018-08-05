@@ -142,11 +142,11 @@ def bin_image_data(arr, binfactor):
     return arr.reshape(shape).sum(-1).sum(1)
 
 
-def mkpsfmodel(psfimage, psfrad=0.6, fitrad=0.3, pixscale=0.03, binning=None,
+def mkpsfmodel(psfimage, xpsf=None, ypsf=None,
+               psfrad=0.6, fitrad=0.3, pixscale=0.03, binning=None,
                phpadu=1, rdnoise=0, mag=25, zeropoint=25, sky=0,
                verbose=True):
-    """ Construct a psf model from drizzled HST images of a
-    standard star or composite star, with the star in the center of the image.
+    """ Construct a psf model from a star in a drizzled image.
 
     :param psfimage: filename of the .fits file with the star at the center in
                image array 0.
@@ -180,14 +180,18 @@ def mkpsfmodel(psfimage, psfrad=0.6, fitrad=0.3, pixscale=0.03, binning=None,
     hdr = hdulist[0].header
     imdat = hdulist[0].data
 
-    xmid = np.array([hdr['NAXIS1'] / 2.]) - 1
-    ymid = np.array([hdr['NAXIS2'] / 2.]) - 1
-    xpos, ypos = hstphot.getxycenter(
-        psfimage, xmid, ymid, ext=0, radec=False,
+    if xpsf is None or ypsf is None:
+        # Assume star is in the center of the image:
+        xmid = np.array([hdr['NAXIS1'] / 2.]) - 1
+        ymid = np.array([hdr['NAXIS2'] / 2.]) - 1
+        xpsf, ypsf = xmid, ymid
+        
+    xpos, ypos = getxycenter(
+        psfimage, xpsf, ypsf, ext=0, radec=False,
         fitsconvention=False, verbose=True)
     if verbose:
         print("PSF recentering : (%.2f,%.2f) ==> (%.2f,%.2f)" % (
-            xmid, ymid, xpos, ypos))
+            xpsf, ypsf, xpos, ypos))
     xpos = np.array([xpos])
     ypos = np.array([ypos])
     mag = np.array([mag])

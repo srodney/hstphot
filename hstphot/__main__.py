@@ -484,7 +484,7 @@ def dopythonphot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
         pdb.set_trace()
 
     if returnflux:
-        return apflux
+        return apflux, apfluxerr
 
     if 'EXPSTART' in imhdr and 'EXPEND' in imhdr:
         mjdobs = (imhdr['EXPEND'] + imhdr['EXPSTART'])/2.

@@ -25,7 +25,7 @@ def addtofits(fitsin, fitsout, psfmodelfile, position, fluxscale,
     if coordsys == 'radec':
         ra = position[:, 0]
         dec = position[:, 1]
-        position = radec2xy(fitsin, ra, dec, ext=0)
+        position = np.array(radec2xy(fitsin, ra, dec, ext=0)).reshape(position.shape)
 
     image = pyfits.open(fitsin, mode='readonly')
     imagedat = image[0].data
