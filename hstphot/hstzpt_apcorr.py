@@ -5,7 +5,6 @@
 # Energy tables or P330E photometry
 __author__ = 'srodney'
 
-from .__main__ import *
 import os
 import sys
 import numpy as np

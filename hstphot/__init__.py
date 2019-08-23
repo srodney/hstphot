@@ -22,11 +22,12 @@ if not _ASTROPY_SETUP_:
     # For egg_info test builds to pass, put package imports here.
     from .example_mod import *
 
-__all__=["astropyphot", "hstfakestar", "mkpsfmodel", "util", "hstzpt_apcorr"]
+__all__=["dophot", "astropyphot", "hstfakestar", "mkpsfmodel",
+         "util", "hstzpt_apcorr", "dophot"]
 
 from . import astropyphot
 from . import hstfakestar
 from . import mkpsfmodel
 from . import util
 from . import hstzpt_apcorr
-
+from . import dophot

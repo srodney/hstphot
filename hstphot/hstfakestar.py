@@ -1,6 +1,6 @@
 __author__ = 'rodney'
 
-from .__main__ import radec2xy
+from .util import radec2xy
 from astropy.io import fits as pyfits
 import numpy as np
 from PythonPhot.photfunctions import rdpsfmodel
