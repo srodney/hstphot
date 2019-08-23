@@ -14,6 +14,7 @@ if sys.version_info <= (3,0):
 def main():
     import os
     import argparse
+    from numpy import array
     from astropy.io import fits as pyfits
 
     parser = argparse.ArgumentParser(
@@ -37,6 +38,8 @@ def main():
                              'for FLT files.')
     parser.add_argument('--forced', action='store_true',
                         help='Forced photometry mode (no recentering).')
+    parser.add_argument('--weightim', default=None, type=str,
+                        help='weight image')
     parser.add_argument('--radec', action='store_true',
                         help='x,y give RA and Dec instead of pixel position.')
     parser.add_argument('--AB', action='store_true',
