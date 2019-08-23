@@ -83,7 +83,7 @@ def dopythonphot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
                  filtername=None, exptime=None, pixscale=None,
                  skyannarcsec=[6.0, 12.0], skyval=None,
                  skyalgorithm='sigmaclipping',
-                 target=None, printstyle=None, exact=True, fitsconvention=True,
+                 target=None, printstyle='default', exact=True, fitsconvention=True,
                  phpadu=None, returnflux=False, showfit=False,
                  verbose=False, debug=False):
     """ Measure the flux through aperture(s) and/or psf fitting using the
@@ -103,7 +103,7 @@ def dopythonphot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
       hardcoded tables)
       skyannarcsec : inner and outer radius of the sky annulus (in arcsec)
       target : name of the target object (for printing in snanastyle)
-      printstyle :  None or 'default' = report MJD, filter, and photometry
+      printstyle :  'default' = report MJD, filter, and photometry
                     'verbose' or 'long' = include target name and position
                     'snana' = report mags in the format of a SNANA .dat file.
       fitsconvention : xc,yc position follows the fits convention with (1,1)
@@ -119,6 +119,8 @@ def dopythonphot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
     if debug == 1:
         import pdb
         pdb.set_trace()
+
+    printstyle = printstyle.lower()
 
     imhdr, imdat = util.getheaderanddata(image, ext=ext)
     if imfilename is None:
@@ -284,8 +286,6 @@ def dopythonphot(image, xc, yc, aparcsec=0.4, system='AB', ext=None,
             print('# MJD     FILTER  APER      FLUX   FLUXERR       MAG     '
                   'MAGERR  MAGSYS    ZP       SKY   SKYERR')
 
-    if printstyle is not None:
-        printstyle = printstyle.lower()
     ra, dec = 0, 0
     if (printstyle is not None and
                 printstyle.lower() in ['snana', 'long', 'verbose']):
